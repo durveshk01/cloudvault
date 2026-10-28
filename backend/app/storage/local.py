@@ -18,9 +18,13 @@ class LocalStorageProvider(StorageProvider):
 
     def _resolve_path(self, storage_key: str) -> Path:
         """Safely resolve storage key to an absolute path inside base_path."""
-        clean_key = storage_key.lstrip("/\\")
-        target_path = (self.base_path / clean_key).resolve()
-        if not str(target_path).startswith(str(self.base_path)):
+        normalized_key = storage_key.replace("\\", "/").lstrip("/")
+        target_path = (self.base_path / normalized_key).resolve()
+        try:
+            target_path.relative_to(self.base_path)
+        except ValueError:
+            raise ValueError(f"Path traversal detected: {storage_key}")
+        if target_path == self.base_path:
             raise ValueError(f"Path traversal detected: {storage_key}")
         return target_path
 
