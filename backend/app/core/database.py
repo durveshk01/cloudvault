@@ -8,6 +8,10 @@ from app.core.config import settings
 
 url = settings.DATABASE_URL
 
+# Normalize postgres:// to postgresql:// (Render, Supabase, Heroku compatibility)
+if url.startswith("postgres://"):
+    url = url.replace("postgres://", "postgresql://", 1)
+
 # If postgresql:// is specified without driver, check if psycopg (v3) is available
 if url.startswith("postgresql://"):
     try:

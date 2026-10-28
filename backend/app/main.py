@@ -36,6 +36,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     # Ensure database schema is created on startup
     Base.metadata.create_all(bind=engine)
+    # Auto-seed demo user if empty
+    try:
+        from app.scripts.seed import seed_database
+        await seed_database()
+    except Exception as e:
+        print(f"Auto-seed check notice: {e}")
     yield
 
 
