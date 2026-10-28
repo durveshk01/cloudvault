@@ -1,7 +1,8 @@
 # CloudVault — Cloud File Storage & Secure Sharing Platform
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/durveshk01/cloudvault)
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/durveshk01/cloudvault&root-directory=frontend)
+[![Live App](https://img.shields.io/badge/Demo-Live%20Application-indigo.svg?style=for-the-badge)](https://cloudvault-frontend-tnwe.onrender.com)
+[![API Docs](https://img.shields.io/badge/API-Swagger%20Docs-009688.svg?style=for-the-badge)](https://cloudvault-backend-wg5r.onrender.com/docs)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-black.svg?style=for-the-badge&logo=github)](https://github.com/durveshk01/cloudvault)
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
 [![Next.js 14](https://img.shields.io/badge/Frontend-Next.js_14-black.svg?style=flat&logo=next.js)](https://nextjs.org)
