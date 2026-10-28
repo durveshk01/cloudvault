@@ -33,15 +33,9 @@ services:
     startCommand: npm start
     envVars:
       - key: INTERNAL_BACKEND_URL
-        fromService:
-          type: web
-          name: cloudvault-backend
-          property: host
+        value: https://cloudvault-backend-wg5r.onrender.com
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: cloudvault-backend
-          property: host
+        value: https://cloudvault-backend-wg5r.onrender.com
 
 databases:
   - name: cloudvault-db
