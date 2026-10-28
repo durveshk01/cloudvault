@@ -8,19 +8,20 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: cloudvault-db
           property: connectionString
-      - key: SECRET_KEY
+      - key: APP_SECRET
         generateValue: true
-      - key: STORAGE_PROVIDER
+      - key: STORAGE_BACKEND
         value: local
       - key: LOCAL_STORAGE_PATH
         value: /tmp/storage_data
       - key: CORS_ORIGINS
-        value: "*"
+        value: https://cloudvault-frontend-tnwe.onrender.com
 
   # Next.js Frontend Web Service
   - type: web
@@ -29,8 +30,9 @@ services:
     region: oregon
     plan: free
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     startCommand: npm start
+    healthCheckPath: /
     envVars:
       - key: INTERNAL_BACKEND_URL
         value: https://cloudvault-backend-wg5r.onrender.com
