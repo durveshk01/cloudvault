@@ -34,6 +34,8 @@ services:
     startCommand: npm start
     healthCheckPath: /
     envVars:
+      - key: HOSTNAME
+        value: 0.0.0.0
       - key: INTERNAL_BACKEND_URL
         value: https://cloudvault-backend-wg5r.onrender.com
       - key: NEXT_PUBLIC_API_URL
