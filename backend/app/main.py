@@ -19,7 +19,6 @@ from app.api import (
     trash,
 )
 from app.core.config import settings
-from app.core.database import Base, engine
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -34,8 +33,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure database schema is created on startup
-    Base.metadata.create_all(bind=engine)
     # Auto-seed demo user if empty
     try:
         from app.scripts.seed import seed_database

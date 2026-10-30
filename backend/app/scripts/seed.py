@@ -8,7 +8,7 @@ import uuid
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from app.core.database import SessionLocal, Base, engine
+from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models.user import User
 from app.models.folder import Folder
@@ -28,7 +28,6 @@ DEMO_NAME = "Alex Taylor"
 
 async def seed_database():
     print("Initializing CloudVault Database Schema...")
-    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     storage = get_storage_provider()
 
