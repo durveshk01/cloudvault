@@ -5,6 +5,7 @@ import { History, X, Download, RotateCcw, Upload, CheckCircle2, Shield } from "l
 import { FileItem, FileVersion } from "@/types";
 import { api } from "@/lib/api";
 import { formatBytes, formatDate } from "@/lib/utils";
+import { LoadError } from "@/components/ui/LoadError";
 
 interface VersionHistoryModalProps {
   file: FileItem | null;
@@ -23,14 +24,16 @@ export function VersionHistoryModal({
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadVersions = () => {
     if (!file) return;
     setIsLoading(true);
+    setLoadError(false);
     api.getVersions(file.id)
       .then(setVersions)
-      .catch((err) => setError(err.message))
+      .catch(() => setLoadError(true))
       .finally(() => setIsLoading(false));
   };
 
@@ -76,8 +79,8 @@ export function VersionHistoryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+      <div role="dialog" aria-modal="true" aria-labelledby="version-history-title" className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] sm:max-h-[85vh]">
         {/* Header */}
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -85,7 +88,7 @@ export function VersionHistoryModal({
               <History className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-foreground">Version History</h3>
+              <h3 id="version-history-title" className="font-semibold text-sm text-foreground">Version History</h3>
               <p className="text-xs text-muted-foreground truncate max-w-xs">
                 {file.original_filename}
               </p>
@@ -93,6 +96,7 @@ export function VersionHistoryModal({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close version history"
             className="p-1 rounded-lg text-muted-foreground hover:bg-accent"
           >
             <X className="w-4 h-4" />
@@ -135,6 +139,8 @@ export function VersionHistoryModal({
             <div className="py-8 text-center text-xs text-muted-foreground">
               Loading version history...
             </div>
+          ) : loadError ? (
+            <LoadError onRetry={loadVersions} isRetrying={isLoading} />
           ) : versions.length === 0 ? (
             <div className="py-8 text-center text-xs text-muted-foreground">
               No previous versions recorded.

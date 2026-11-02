@@ -28,6 +28,7 @@ import { NewFolderModal } from "@/components/modals/NewFolderModal";
 import { FilePreviewModal } from "@/components/modals/FilePreviewModal";
 import { ShareModal } from "@/components/modals/ShareModal";
 import { VersionHistoryModal } from "@/components/modals/VersionHistoryModal";
+import { LoadError } from "@/components/ui/LoadError";
 import { api } from "@/lib/api";
 import { BreadcrumbItem, FileItem, FolderItem } from "@/types";
 
@@ -52,6 +53,7 @@ function FilesContent() {
   const [sortBy, setSortBy] = useState<string>("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadError, setHasLoadError] = useState(false);
 
   // Selection state
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
@@ -66,6 +68,7 @@ function FilesContent() {
 
   const loadData = async () => {
     setIsLoading(true);
+    setHasLoadError(false);
     try {
       // Load folders in current directory (only when not searching globally)
       if (!searchParam && category === "all") {
@@ -98,7 +101,7 @@ function FilesContent() {
       setTotalFiles(fileData.total);
       setTotalPages(fileData.total_pages);
     } catch {
-      // Error handled
+      setHasLoadError(true);
     } finally {
       setIsLoading(false);
     }
@@ -322,6 +325,8 @@ function FilesContent() {
                 <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
                 Loading vault contents...
               </div>
+            ) : hasLoadError ? (
+              <LoadError onRetry={loadData} isRetrying={isLoading} />
             ) : files.length === 0 ? (
               <div className="py-16 text-center border-2 border-dashed border-border rounded-2xl bg-card">
                 <FileQuestion className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />

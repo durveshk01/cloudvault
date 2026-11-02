@@ -28,10 +28,28 @@ interface SidebarProps {
 export function Sidebar({ onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const [storage, setStorage] = useState<StorageUsage | null>(null);
+  const [storageUnavailable, setStorageUnavailable] = useState(false);
 
   useEffect(() => {
-    api.getStorageUsage().then(setStorage).catch(() => {});
-  }, [pathname]);
+    let isCurrent = true;
+    const loadStorage = () => {
+      api.getStorageUsage()
+        .then((usage) => {
+          if (!isCurrent) return;
+          setStorage(usage);
+          setStorageUnavailable(false);
+        })
+        .catch(() => {
+          if (isCurrent) setStorageUnavailable(true);
+        });
+    };
+    loadStorage();
+    window.addEventListener("refresh_files", loadStorage);
+    return () => {
+      isCurrent = false;
+      window.removeEventListener("refresh_files", loadStorage);
+    };
+  }, []);
 
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: Layers },
@@ -75,6 +93,7 @@ export function Sidebar({ onCloseMobile }: SidebarProps) {
               key={item.href}
               href={item.href}
               onClick={onCloseMobile}
+              aria-current={pathname === item.href ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors",
                 isActive
@@ -97,7 +116,7 @@ export function Sidebar({ onCloseMobile }: SidebarProps) {
             Storage
           </span>
           <span className="text-muted-foreground font-medium">
-            {storage ? `${storage.used_percentage}%` : "0%"}
+            {storage ? `${storage.used_percentage}%` : storageUnavailable ? "Unavailable" : "—"}
           </span>
         </div>
 
@@ -114,7 +133,7 @@ export function Sidebar({ onCloseMobile }: SidebarProps) {
         <p className="text-[11px] text-muted-foreground font-medium">
           {storage
             ? `${formatBytes(storage.used_bytes)} of ${formatBytes(storage.quota_bytes)} used`
-            : "Calculating quota..."}
+            : storageUnavailable ? "Storage usage is unavailable." : "Calculating quota..."}
         </p>
       </div>
     </aside>

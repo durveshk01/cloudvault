@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { BulkActionsToolbar } from "@/components/files/BulkActionsToolbar";
+import { LoadError } from "@/components/ui/LoadError";
 import { api } from "@/lib/api";
 import { FileItem } from "@/types";
 import { formatBytes, formatDate } from "@/lib/utils";
@@ -17,13 +18,15 @@ import { formatBytes, formatDate } from "@/lib/utils";
 export default function TrashPage() {
   const [items, setItems] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadError, setHasLoadError] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const loadTrash = () => {
     setIsLoading(true);
+    setHasLoadError(false);
     api.getTrashItems()
       .then((res) => setItems(res.items))
-      .catch(() => {})
+      .catch(() => setHasLoadError(true))
       .finally(() => setIsLoading(false));
   };
 
@@ -94,6 +97,8 @@ export default function TrashPage() {
             <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
             Loading trash items...
           </div>
+        ) : hasLoadError ? (
+          <LoadError onRetry={loadTrash} isRetrying={isLoading} />
         ) : items.length === 0 ? (
           <div className="py-16 text-center border-2 border-dashed border-border rounded-2xl bg-card">
             <Trash2 className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
@@ -103,8 +108,8 @@ export default function TrashPage() {
             </p>
           </div>
         ) : (
-          <div className="border border-border rounded-xl bg-card overflow-hidden shadow-sm">
-            <table className="w-full border-collapse text-xs">
+          <div className="border border-border rounded-xl bg-card shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[620px] border-collapse text-xs">
               <thead>
                 <tr className="border-b border-border bg-accent/20 text-muted-foreground text-[11px] uppercase font-semibold text-left">
                   <th className="py-3 px-3 w-8">

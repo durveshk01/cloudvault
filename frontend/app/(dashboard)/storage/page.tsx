@@ -30,6 +30,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { api } from "@/lib/api";
 import { DashboardStats, StorageUsage, FileTypeStat } from "@/types";
 import { formatBytes } from "@/lib/utils";
+import { LoadError } from "@/components/ui/LoadError";
 
 const CATEGORY_COLORS: Record<string, string> = {
   document: "#3b82f6", // blue
@@ -55,9 +56,11 @@ export default function StoragePage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadError, setHasLoadError] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
+    setHasLoadError(false);
     try {
       const [statsData, usageData] = await Promise.all([
         api.getDashboardStats(),
@@ -65,8 +68,8 @@ export default function StoragePage() {
       ]);
       setStats(statsData);
       setUsage(usageData);
-    } catch (err) {
-      console.error("Failed to load storage data", err);
+    } catch {
+      setHasLoadError(true);
     } finally {
       setIsLoading(false);
     }
@@ -129,6 +132,16 @@ export default function StoragePage() {
 
   return (
     <DashboardLayout>
+      {hasLoadError ? (
+        <LoadError onRetry={loadData} isRetrying={isLoading} />
+      ) : isLoading ? (
+        <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
+          <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+            Loading storage analytics...
+          </div>
+        </div>
+      ) : (
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -367,6 +380,7 @@ export default function StoragePage() {
           </div>
         </div>
       </div>
+      )}
     </DashboardLayout>
   );
 }

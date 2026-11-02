@@ -66,7 +66,7 @@ export default function RegisterPage() {
         {/* Register Card */}
         <div className="p-6 rounded-2xl border border-border bg-card shadow-xl space-y-4">
           {error && (
-            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs font-medium flex items-center gap-2">
+            <div role="alert" aria-live="polite" className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs font-medium flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -74,12 +74,14 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             <div>
-              <label className="block font-medium text-foreground mb-1.5">
+              <label htmlFor="register-name" className="block font-medium text-foreground mb-1.5">
                 Full Name
               </label>
               <div className="relative">
                 <User className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="register-name"
+                  autoComplete="name"
                   type="text"
                   required
                   placeholder="Alex Taylor"
@@ -91,12 +93,14 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block font-medium text-foreground mb-1.5">
+              <label htmlFor="register-email" className="block font-medium text-foreground mb-1.5">
                 Email Address
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="register-email"
+                  autoComplete="email"
                   type="email"
                   required
                   placeholder="alex@example.com"
@@ -108,12 +112,14 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block font-medium text-foreground mb-1.5">
+              <label htmlFor="register-password" className="block font-medium text-foreground mb-1.5">
                 Password
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="register-password"
+                  autoComplete="new-password"
                   type="password"
                   required
                   placeholder="••••••••"
@@ -143,12 +149,14 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block font-medium text-foreground mb-1.5">
+              <label htmlFor="register-confirm-password" className="block font-medium text-foreground mb-1.5">
                 Confirm Password
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="register-confirm-password"
+                  autoComplete="new-password"
                   type="password"
                   required
                   placeholder="••••••••"

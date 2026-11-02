@@ -26,6 +26,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }, [user, isLoading, router]);
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileMenuOpen]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -51,11 +60,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
-          <div
+          <button
+            type="button"
+            aria-label="Close navigation menu"
             className="fixed inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="relative z-10 w-64 h-full bg-card shadow-xl">
+          <div id="mobile-navigation-drawer" role="dialog" aria-modal="true" aria-label="Main navigation" className="relative z-10 w-64 h-full bg-card shadow-xl">
             <Sidebar onCloseMobile={() => setMobileMenuOpen(false)} />
           </div>
         </div>
@@ -65,6 +76,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopNavbar
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          isMobileMenuOpen={mobileMenuOpen}
           onOpenUploadModal={() => setUploadModalOpen(true)}
           onOpenNewFolderModal={() => setNewFolderModalOpen(true)}
         />

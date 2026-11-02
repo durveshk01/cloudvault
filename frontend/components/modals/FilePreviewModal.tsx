@@ -15,25 +15,40 @@ interface FilePreviewModalProps {
 export function FilePreviewModal({ file, isOpen, onClose }: FilePreviewModalProps) {
   const [textContent, setTextContent] = useState<string | null>(null);
   const [isLoadingText, setIsLoadingText] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!file || !isOpen) {
       setTextContent(null);
+      setDownloadError(null);
       return;
     }
 
+    let isCurrent = true;
     const cat = getFileCategory(file.original_filename, file.mime_type);
     if (cat === "document" || cat === "code") {
       const ext = file.original_filename.split(".").pop()?.toLowerCase();
       if (ext !== "pdf" && ext !== "doc" && ext !== "docx" && ext !== "xls" && ext !== "xlsx" && ext !== "ppt" && ext !== "pptx") {
         setIsLoadingText(true);
-        fetch(api.getFilePreviewUrl(file.id))
-          .then((r) => r.text())
-          .then((txt) => setTextContent(txt))
-          .catch(() => setTextContent("Unable to load preview text."))
-          .finally(() => setIsLoadingText(false));
+        fetch(api.getFilePreviewUrl(file.id), { credentials: "include" })
+          .then((response) => {
+            if (!response.ok) throw new Error("Preview request failed");
+            return response.text();
+          })
+          .then((txt) => {
+            if (isCurrent) setTextContent(txt);
+          })
+          .catch(() => {
+            if (isCurrent) setTextContent("Unable to load preview. Please try downloading the file.");
+          })
+          .finally(() => {
+            if (isCurrent) setIsLoadingText(false);
+          });
       }
     }
+    return () => {
+      isCurrent = false;
+    };
   }, [file, isOpen]);
 
   if (!isOpen || !file) return null;
@@ -43,12 +58,19 @@ export function FilePreviewModal({ file, isOpen, onClose }: FilePreviewModalProp
   const isPdf = file.mime_type === "application/pdf" || file.original_filename.endsWith(".pdf");
   const isText = textContent !== null || isLoadingText;
 
-  const downloadUrl = api.getFileDownloadUrl(file.id);
   const previewUrl = api.getFilePreviewUrl(file.id);
+  const handleDownload = async () => {
+    setDownloadError(null);
+    try {
+      await api.downloadFile(file.id, file.original_filename);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "The file could not be downloaded.");
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in">
-      <div className="bg-card border border-border w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-md animate-in fade-in">
+      <div role="dialog" aria-modal="true" aria-labelledby="file-preview-title" className="bg-card border border-border w-full max-w-4xl h-[90dvh] sm:h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-border flex items-center justify-between bg-card shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -56,7 +78,7 @@ export function FilePreviewModal({ file, isOpen, onClose }: FilePreviewModalProp
               {isImage ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
             </div>
             <div className="min-w-0">
-              <h3 className="font-semibold text-sm text-foreground truncate">
+              <h3 id="file-preview-title" className="font-semibold text-sm text-foreground truncate">
                 {file.original_filename}
               </h3>
               <p className="text-xs text-muted-foreground">
@@ -66,16 +88,17 @@ export function FilePreviewModal({ file, isOpen, onClose }: FilePreviewModalProp
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <a
-              href={downloadUrl}
-              download={file.original_filename}
+            <button
+              type="button"
+              onClick={handleDownload}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors"
             >
               <Download className="w-3.5 h-3.5" />
-              Download
-            </a>
+              <span className="hidden sm:inline">Download</span>
+            </button>
             <button
               onClick={onClose}
+              aria-label="Close file preview"
               className="p-1.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <X className="w-5 h-5" />
@@ -85,6 +108,11 @@ export function FilePreviewModal({ file, isOpen, onClose }: FilePreviewModalProp
 
         {/* Content Viewer Body */}
         <div className="flex-1 bg-accent/20 overflow-auto flex items-center justify-center p-4 relative">
+          {downloadError && (
+            <div role="alert" className="absolute top-3 left-3 right-3 z-10 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/80 dark:text-red-300">
+              {downloadError}
+            </div>
+          )}
           {isImage ? (
             <div className="max-w-full max-h-full flex items-center justify-center">
               <img
@@ -121,14 +149,14 @@ export function FilePreviewModal({ file, isOpen, onClose }: FilePreviewModalProp
               <p className="text-xs text-muted-foreground mb-4">
                 This file type ({file.mime_type || "binary"}) cannot be safely displayed in the browser. You can download the file to inspect it locally.
               </p>
-              <a
-                href={downloadUrl}
-                download={file.original_filename}
+              <button
+                type="button"
+                onClick={handleDownload}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors"
               >
                 <Download className="w-4 h-4" />
                 Download {file.original_filename} ({formatBytes(file.size_bytes)})
-              </a>
+              </button>
             </div>
           )}
         </div>

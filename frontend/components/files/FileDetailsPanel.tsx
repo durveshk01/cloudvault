@@ -37,19 +37,30 @@ export function FileDetailsPanel({
   const [newTag, setNewTag] = useState("");
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   if (!file) return null;
 
   const handleToggleStar = async () => {
-    await api.toggleStar(file.id);
-    onRefresh();
+    setActionError(null);
+    try {
+      await api.toggleStar(file.id);
+      onRefresh();
+    } catch {
+      setActionError("The star setting could not be updated. Try again.");
+    }
   };
 
   const handleDelete = async () => {
     if (confirm(`Move "${file.original_filename}" to trash?`)) {
-      await api.deleteFile(file.id);
-      onClose();
-      onRefresh();
+      setActionError(null);
+      try {
+        await api.deleteFile(file.id);
+        onClose();
+        onRefresh();
+      } catch {
+        setActionError("The file could not be moved to trash. Try again.");
+      }
     }
   };
 
@@ -58,7 +69,7 @@ export function FileDetailsPanel({
     try {
       await api.downloadFile(file.id, file.original_filename);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "The file could not be downloaded.");
+      setActionError(error instanceof Error ? error.message : "The file could not be downloaded.");
     } finally {
       setIsDownloading(false);
     }
@@ -69,6 +80,7 @@ export function FileDetailsPanel({
     if (!newTag.trim()) return;
 
     setIsAddingTag(true);
+    setActionError(null);
     try {
       const tag = await api.createTag(newTag.trim());
       const existingTagIds = file.tags?.map((t) => t.id) || [];
@@ -78,7 +90,7 @@ export function FileDetailsPanel({
       setNewTag("");
       onRefresh();
     } catch {
-      // Ignored
+      setActionError("The tag could not be added. Try again.");
     } finally {
       setIsAddingTag(false);
     }
@@ -86,12 +98,17 @@ export function FileDetailsPanel({
 
   const handleRemoveTag = async (tagId: string) => {
     const remaining = (file.tags || []).filter((t) => t.id !== tagId).map((t) => t.id);
-    await api.assignTags(file.id, remaining);
-    onRefresh();
+    setActionError(null);
+    try {
+      await api.assignTags(file.id, remaining);
+      onRefresh();
+    } catch {
+      setActionError("The tag could not be removed. Try again.");
+    }
   };
 
   return (
-    <aside className="w-80 border-l border-border bg-card h-full flex flex-col shrink-0 animate-in slide-in-from-right duration-200">
+    <aside aria-label="File details" className="fixed inset-y-0 right-0 top-16 z-40 h-[calc(100dvh-4rem)] w-full max-w-sm border-l border-border bg-card shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 md:relative md:inset-auto md:z-auto md:h-full md:w-80 md:shrink-0 md:shadow-none">
       {/* Header */}
       <div className="p-4 border-b border-border flex items-center justify-between">
         <h3 className="font-semibold text-xs text-foreground uppercase tracking-wider">
@@ -99,6 +116,7 @@ export function FileDetailsPanel({
         </h3>
         <button
           onClick={onClose}
+          aria-label="Close file details"
           className="p-1 rounded-lg text-muted-foreground hover:bg-accent"
         >
           <X className="w-4 h-4" />
@@ -107,6 +125,11 @@ export function FileDetailsPanel({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-6 text-xs">
+        {actionError && (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+            {actionError}
+          </p>
+        )}
         {/* File Preview Thumbnail / Header */}
         <div className="flex flex-col items-center text-center p-4 bg-accent/20 rounded-xl border border-border">
           <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-2">

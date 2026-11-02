@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Users, Download, Eye, FileText, Calendar, Shield } from "lucide-react";
+import { Users, Download, Eye, FileText } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { FilePreviewModal } from "@/components/modals/FilePreviewModal";
+import { LoadError } from "@/components/ui/LoadError";
 import { api } from "@/lib/api";
 import { FileItem, FileShare } from "@/types";
 import { formatBytes, formatDate } from "@/lib/utils";
@@ -11,14 +12,30 @@ import { formatBytes, formatDate } from "@/lib/utils";
 export default function SharedWithMePage() {
   const [shares, setShares] = useState<FileShare[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadError, setHasLoadError] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const loadShares = () => {
     setIsLoading(true);
+    setHasLoadError(false);
     api.getSharedWithMe()
       .then(setShares)
-      .catch(() => {})
+      .catch(() => setHasLoadError(true))
       .finally(() => setIsLoading(false));
+  };
+
+  const handleDownload = async (file: FileItem) => {
+    setDownloadingId(file.id);
+    setDownloadError(null);
+    try {
+      await api.downloadFile(file.id, file.original_filename);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "The file could not be downloaded.");
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   useEffect(() => {
@@ -40,6 +57,8 @@ export default function SharedWithMePage() {
             <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
             Loading shared files...
           </div>
+        ) : hasLoadError ? (
+          <LoadError onRetry={loadShares} isRetrying={isLoading} />
         ) : shares.length === 0 ? (
           <div className="py-16 text-center border-2 border-dashed border-border rounded-2xl bg-card">
             <Users className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
@@ -49,8 +68,9 @@ export default function SharedWithMePage() {
             </p>
           </div>
         ) : (
-          <div className="border border-border rounded-xl bg-card overflow-hidden shadow-sm">
-            <table className="w-full border-collapse text-xs">
+          <div className="border border-border rounded-xl bg-card shadow-sm overflow-x-auto">
+            {downloadError && <p role="alert" className="px-4 py-2 text-xs text-red-600 dark:text-red-400">{downloadError}</p>}
+            <table className="w-full min-w-[720px] border-collapse text-xs">
               <thead>
                 <tr className="border-b border-border bg-accent/20 text-muted-foreground text-[11px] uppercase font-semibold text-left">
                   <th className="py-3 px-4">Filename</th>
@@ -104,14 +124,16 @@ export default function SharedWithMePage() {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <a
-                            href={api.getFileDownloadUrl(file.id)}
-                            download={file.original_filename}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                          <button
+                            type="button"
+                            onClick={() => handleDownload(file)}
+                            disabled={downloadingId === file.id}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
                             title="Download file"
+                            aria-label={`Download ${file.original_filename}`}
                           >
-                            <Download className="w-4 h-4" />
-                          </a>
+                            <Download className={`w-4 h-4 ${downloadingId === file.id ? "animate-pulse" : ""}`} />
+                          </button>
                         </div>
                       </td>
                     </tr>

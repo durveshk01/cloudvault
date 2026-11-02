@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Share2, Trash2, Eye, FileText } from "lucide-react";
+import { Share2, Trash2, FileText } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { FilePreviewModal } from "@/components/modals/FilePreviewModal";
+import { LoadError } from "@/components/ui/LoadError";
 import { api } from "@/lib/api";
 import { FileItem, FileShare } from "@/types";
 import { formatBytes, formatDate } from "@/lib/utils";
@@ -11,13 +11,14 @@ import { formatBytes, formatDate } from "@/lib/utils";
 export default function SharedByMePage() {
   const [shares, setShares] = useState<FileShare[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [hasLoadError, setHasLoadError] = useState(false);
 
   const loadShares = () => {
     setIsLoading(true);
+    setHasLoadError(false);
     api.getSharedByMe()
       .then(setShares)
-      .catch(() => {})
+      .catch(() => setHasLoadError(true))
       .finally(() => setIsLoading(false));
   };
 
@@ -47,6 +48,8 @@ export default function SharedByMePage() {
             <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
             Loading shared files...
           </div>
+        ) : hasLoadError ? (
+          <LoadError onRetry={loadShares} isRetrying={isLoading} />
         ) : shares.length === 0 ? (
           <div className="py-16 text-center border-2 border-dashed border-border rounded-2xl bg-card">
             <Share2 className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
@@ -56,8 +59,8 @@ export default function SharedByMePage() {
             </p>
           </div>
         ) : (
-          <div className="border border-border rounded-xl bg-card overflow-hidden shadow-sm">
-            <table className="w-full border-collapse text-xs">
+          <div className="border border-border rounded-xl bg-card shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-xs">
               <thead>
                 <tr className="border-b border-border bg-accent/20 text-muted-foreground text-[11px] uppercase font-semibold text-left">
                   <th className="py-3 px-4">Filename</th>
@@ -123,11 +126,6 @@ export default function SharedByMePage() {
         )}
       </div>
 
-      <FilePreviewModal
-        file={previewFile}
-        isOpen={!!previewFile}
-        onClose={() => setPreviewFile(null)}
-      />
     </DashboardLayout>
   );
 }

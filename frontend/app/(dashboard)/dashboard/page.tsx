@@ -29,6 +29,7 @@ import { FilePreviewModal } from "@/components/modals/FilePreviewModal";
 import { ShareModal } from "@/components/modals/ShareModal";
 import { VersionHistoryModal } from "@/components/modals/VersionHistoryModal";
 import { FileDetailsPanel } from "@/components/files/FileDetailsPanel";
+import { LoadError } from "@/components/ui/LoadError";
 import { api } from "@/lib/api";
 import { DashboardStats, FileItem } from "@/types";
 import { formatBytes, formatDate } from "@/lib/utils";
@@ -38,6 +39,7 @@ const COLORS = ["#6366f1", "#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadError, setHasLoadError] = useState(false);
 
   // Modals
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
@@ -47,9 +49,10 @@ export default function DashboardPage() {
 
   const loadDashboard = () => {
     setIsLoading(true);
+    setHasLoadError(false);
     api.getDashboardStats()
       .then(setStats)
-      .catch(() => {})
+      .catch(() => setHasLoadError(true))
       .finally(() => setIsLoading(false));
   };
 
@@ -72,18 +75,22 @@ export default function DashboardPage() {
     );
   }
 
+  if (hasLoadError || !stats) {
+    return (
+      <DashboardLayout>
+        <LoadError onRetry={loadDashboard} isRetrying={isLoading} />
+      </DashboardLayout>
+    );
+  }
+
   const chartData = (stats?.file_type_distribution || []).map((item) => ({
     name: item.category.charAt(0).toUpperCase() + item.category.slice(1),
     value: item.size_bytes,
     count: item.count,
   }));
 
-  const availableBytes = stats
-    ? Math.max(0, stats.storage_quota_bytes - stats.storage_used_bytes)
-    : 0;
-
   const usedPercentage = stats
-    ? Math.min(100, (stats.storage_used_bytes / stats.storage_quota_bytes) * 100).toFixed(1)
+    ? Math.min(100, stats.storage_quota_bytes > 0 ? (stats.storage_used_bytes / stats.storage_quota_bytes) * 100 : 0).toFixed(1)
     : "0";
 
   return (

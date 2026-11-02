@@ -17,6 +17,7 @@ import {
 import { FileItem, FileShare, ShareLink } from "@/types";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
+import { LoadError } from "@/components/ui/LoadError";
 
 interface ShareModalProps {
   file: FileItem | null;
@@ -31,11 +32,15 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
   const [email, setEmail] = useState("");
   const [permission, setPermission] = useState<"viewer" | "editor">("viewer");
   const [directShares, setDirectShares] = useState<FileShare[]>([]);
+  const [isLoadingShares, setIsLoadingShares] = useState(false);
+  const [sharesUnavailable, setSharesUnavailable] = useState(false);
   const [isSharingUser, setIsSharingUser] = useState(false);
   const [userShareError, setUserShareError] = useState<string | null>(null);
 
   // Link state
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
+  const [isLoadingLinks, setIsLoadingLinks] = useState(false);
+  const [linksUnavailable, setLinksUnavailable] = useState(false);
   const [linkPermission, setLinkPermission] = useState<"view" | "download">("download");
   const [password, setPassword] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
@@ -47,8 +52,18 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
 
   const loadData = () => {
     if (!file) return;
-    api.getFileShares(file.id).then(setDirectShares).catch(() => {});
-    api.getFileShareLinks(file.id).then(setShareLinks).catch(() => {});
+    setIsLoadingShares(true);
+    setSharesUnavailable(false);
+    api.getFileShares(file.id)
+      .then(setDirectShares)
+      .catch(() => setSharesUnavailable(true))
+      .finally(() => setIsLoadingShares(false));
+    setIsLoadingLinks(true);
+    setLinksUnavailable(false);
+    api.getFileShareLinks(file.id)
+      .then(setShareLinks)
+      .catch(() => setLinksUnavailable(true))
+      .finally(() => setIsLoadingLinks(false));
   };
 
   useEffect(() => {
@@ -122,15 +137,19 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setLinkError("The link could not be copied. Select and copy it manually.");
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+      <div role="dialog" aria-modal="true" aria-labelledby="share-modal-title" className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] sm:max-h-[85vh]">
         {/* Header */}
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -138,13 +157,14 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
               <Share2 className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-foreground">
+              <h3 id="share-modal-title" className="font-semibold text-sm text-foreground">
                 Share "{file.original_filename}"
               </h3>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close sharing dialog"
             className="p-1 rounded-lg text-muted-foreground hover:bg-accent"
           >
             <X className="w-4 h-4" />
@@ -183,19 +203,22 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
             /* TAB 1: Registered Users */
             <div className="space-y-4">
               <form onSubmit={handleShareWithUser} className="space-y-3">
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <input
+                    id="collaborator-email"
                     type="email"
                     required
+                    aria-label="Collaborator email address"
                     placeholder="Enter collaborator email..."
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="flex-1 bg-accent/40 border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="min-w-0 flex-1 bg-accent/40 border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                   <select
+                    aria-label="Collaborator permission"
                     value={permission}
                     onChange={(e) => setPermission(e.target.value as any)}
-                    className="bg-accent/40 border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none"
+                    className="w-full sm:w-auto bg-accent/40 border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none"
                   >
                     <option value="viewer">Viewer</option>
                     <option value="editor">Editor</option>
@@ -220,7 +243,11 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
                 <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
                   People with access
                 </h4>
-                {directShares.length === 0 ? (
+                {isLoadingShares ? (
+                  <p role="status" className="py-3 text-center text-xs text-muted-foreground">Loading access list...</p>
+                ) : sharesUnavailable ? (
+                  <LoadError onRetry={loadData} isRetrying={isLoadingShares} />
+                ) : directShares.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-3 text-center">
                     This file is currently only accessible by you.
                   </p>
@@ -360,7 +387,11 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
                 <h4 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
                   Active Links
                 </h4>
-                {shareLinks.length === 0 ? (
+                {isLoadingLinks ? (
+                  <p role="status" className="py-3 text-center text-xs text-muted-foreground">Loading links...</p>
+                ) : linksUnavailable ? (
+                  <LoadError onRetry={loadData} isRetrying={isLoadingLinks} />
+                ) : shareLinks.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-2 text-center">
                     No active public links for this file.
                   </p>

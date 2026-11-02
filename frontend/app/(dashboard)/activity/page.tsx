@@ -22,20 +22,23 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { api } from "@/lib/api";
 import { ActivityLog } from "@/types";
 import { formatDate } from "@/lib/utils";
+import { LoadError } from "@/components/ui/LoadError";
 
 export default function ActivityPage() {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadError, setHasLoadError] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
 
   const loadActivities = async () => {
     setIsLoading(true);
+    setHasLoadError(false);
     try {
       const data = await api.getActivity(100);
       setActivities(data);
-    } catch (err) {
-      console.error("Failed to load activities", err);
+    } catch {
+      setHasLoadError(true);
     } finally {
       setIsLoading(false);
     }
@@ -153,6 +156,8 @@ export default function ActivityPage() {
             <div className="flex items-center justify-center py-20 text-muted-foreground">
               <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
             </div>
+          ) : hasLoadError ? (
+            <LoadError onRetry={loadActivities} isRetrying={isLoading} />
           ) : filteredActivities.length > 0 ? (
             <div className="divide-y divide-border">
               {filteredActivities.map((act) => (

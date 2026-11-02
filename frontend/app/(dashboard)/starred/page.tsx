@@ -8,12 +8,14 @@ import { FilePreviewModal } from "@/components/modals/FilePreviewModal";
 import { ShareModal } from "@/components/modals/ShareModal";
 import { VersionHistoryModal } from "@/components/modals/VersionHistoryModal";
 import { FileDetailsPanel } from "@/components/files/FileDetailsPanel";
+import { LoadError } from "@/components/ui/LoadError";
 import { api } from "@/lib/api";
 import { FileItem } from "@/types";
 
 export default function StarredPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadError, setHasLoadError] = useState(false);
 
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [shareFile, setShareFile] = useState<FileItem | null>(null);
@@ -22,9 +24,10 @@ export default function StarredPage() {
 
   const loadStarred = () => {
     setIsLoading(true);
+    setHasLoadError(false);
     api.getStarredFiles()
       .then((res) => setFiles(res.items))
-      .catch(() => {})
+      .catch(() => setHasLoadError(true))
       .finally(() => setIsLoading(false));
   };
 
@@ -48,6 +51,8 @@ export default function StarredPage() {
               <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
               Loading starred files...
             </div>
+          ) : hasLoadError ? (
+            <LoadError onRetry={loadStarred} isRetrying={isLoading} />
           ) : files.length === 0 ? (
             <div className="py-16 text-center border-2 border-dashed border-border rounded-2xl bg-card">
               <Star className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />

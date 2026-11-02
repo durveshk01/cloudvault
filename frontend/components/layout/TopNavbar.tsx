@@ -25,12 +25,14 @@ import { formatDate } from "@/lib/utils";
 
 interface TopNavbarProps {
   onOpenMobileMenu?: () => void;
+  isMobileMenuOpen?: boolean;
   onOpenUploadModal?: () => void;
   onOpenNewFolderModal?: () => void;
 }
 
 export function TopNavbar({
   onOpenMobileMenu,
+  isMobileMenuOpen = false,
   onOpenUploadModal,
   onOpenNewFolderModal,
 }: TopNavbarProps) {
@@ -42,13 +44,17 @@ export function TopNavbar({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsUnavailable, setNotificationsUnavailable] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const loadNotifications = () => {
     api.getNotifications()
-      .then(setNotifications)
-      .catch(() => {});
+      .then((items) => {
+        setNotifications(items);
+        setNotificationsUnavailable(false);
+      })
+      .catch(() => setNotificationsUnavailable(true));
   };
 
   useEffect(() => {
@@ -79,13 +85,21 @@ export function TopNavbar({
   };
 
   const markAllRead = async () => {
-    await api.markAllNotificationsRead();
-    loadNotifications();
+    try {
+      await api.markAllNotificationsRead();
+      loadNotifications();
+    } catch {
+      setNotificationsUnavailable(true);
+    }
   };
 
   const markSingleRead = async (id: string) => {
-    await api.markNotificationRead(id);
-    loadNotifications();
+    try {
+      await api.markNotificationRead(id);
+      loadNotifications();
+    } catch {
+      setNotificationsUnavailable(true);
+    }
   };
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
@@ -96,14 +110,19 @@ export function TopNavbar({
       <div className="flex items-center gap-3 flex-1 max-w-xl">
         <button
           onClick={onOpenMobileMenu}
+          aria-label="Open navigation menu"
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="mobile-navigation-drawer"
           className="md:hidden p-2 rounded-lg text-muted-foreground hover:bg-accent"
         >
           <Menu className="w-5 h-5" />
         </button>
 
-        <form onSubmit={handleSearchSubmit} className="relative w-full">
+        <form onSubmit={handleSearchSubmit} role="search" className="relative w-full min-w-0">
           <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+          <label className="sr-only" htmlFor="global-file-search">Search files, folders, or tags</label>
           <input
+            id="global-file-search"
             type="text"
             placeholder="Search files, folders, or tags..."
             value={searchQuery}
@@ -114,15 +133,30 @@ export function TopNavbar({
       </div>
 
       {/* Right Actions */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-3">
         {/* Quick Upload Button */}
         {onOpenUploadModal && (
           <button
             onClick={onOpenUploadModal}
-            className="hidden sm:inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors"
+            aria-label="Upload file"
+            title="Upload file"
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-2 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 sm:px-3.5"
           >
             <Upload className="w-3.5 h-3.5" />
-            Upload File
+            <span className="hidden sm:inline">Upload File</span>
+          </button>
+        )}
+
+        {onOpenNewFolderModal && (
+          <button
+            type="button"
+            onClick={onOpenNewFolderModal}
+            aria-label="Create new folder"
+            title="Create new folder"
+            className="hidden items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold text-foreground shadow-sm transition-colors hover:bg-accent md:inline-flex"
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+            New Folder
           </button>
         )}
 
@@ -130,6 +164,7 @@ export function TopNavbar({
         <button
           onClick={toggleTheme}
           aria-label="Toggle Theme"
+          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
           className="p-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         >
           {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -141,6 +176,8 @@ export function TopNavbar({
             onClick={() => setShowNotifications(!showNotifications)}
             className="p-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors relative"
             aria-label="Notifications"
+            aria-expanded={showNotifications}
+            aria-haspopup="dialog"
           >
             <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
@@ -171,7 +208,11 @@ export function TopNavbar({
               </div>
 
               <div className="max-h-80 overflow-y-auto divide-y divide-border">
-                {notifications.length === 0 ? (
+                {notificationsUnavailable ? (
+                  <div role="alert" className="p-4 text-center text-xs text-red-600 dark:text-red-400">
+                    Notifications are temporarily unavailable. <button type="button" onClick={loadNotifications} className="font-semibold underline">Retry</button>
+                  </div>
+                ) : notifications.length === 0 ? (
                   <div className="py-8 text-center text-xs text-muted-foreground">
                     No notifications yet.
                   </div>
@@ -213,6 +254,9 @@ export function TopNavbar({
         <div className="relative" ref={userMenuRef}>
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
+            aria-label="Open account menu"
+            aria-expanded={showUserMenu}
+            aria-haspopup="menu"
             className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-accent text-foreground transition-colors"
           >
             <div className="w-8 h-8 rounded-full bg-indigo-600 text-white font-semibold text-xs flex items-center justify-center">
