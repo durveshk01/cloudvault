@@ -209,13 +209,14 @@ async def download_file(
     file_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    direct: bool = Query(False, description="Stream content instead of returning a presigned object URL."),
 ):
     """Download file contents securely."""
     file, _ = FileService.check_file_access(db, file_id, current_user.id)
     storage = get_storage_provider()
 
     # Check for presigned S3 download URL
-    presigned = storage.generate_presigned_download_url(file.storage_key, file.original_filename)
+    presigned = None if direct else storage.generate_presigned_download_url(file.storage_key, file.original_filename)
     if presigned:
         return {"download_url": presigned}
 

@@ -3,6 +3,7 @@
 [![Live App](https://img.shields.io/badge/Demo-Live%20Application-indigo.svg?style=for-the-badge)](https://cloudvault-frontend-tnwe.onrender.com)
 [![API Docs](https://img.shields.io/badge/API-Swagger%20Docs-009688.svg?style=for-the-badge)](https://cloudvault-backend-wg5r.onrender.com/docs)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-black.svg?style=for-the-badge&logo=github)](https://github.com/durveshk01/cloudvault)
+[![Android APK](https://img.shields.io/badge/Android-APK%20Download-3DDC84.svg?style=for-the-badge&logo=android)](https://github.com/durveshk01/cloudvault/releases/latest)
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
 [![Next.js 14](https://img.shields.io/badge/Frontend-Next.js_14-black.svg?style=flat&logo=next.js)](https://nextjs.org)
@@ -13,6 +14,8 @@
 [![Pytest](https://img.shields.io/badge/Tests-26%20Passed-brightgreen.svg?style=flat)](https://docs.pytest.org)
 
 **CloudVault** is an enterprise-grade cloud file storage and secure sharing platform built from the ground up with **FastAPI**, **Next.js 14 App Router**, **TypeScript**, and **PostgreSQL**. Designed with a commercial SaaS user experience inspired by Google Drive and Dropbox, CloudVault demonstrates modern full-stack software engineering, defense-in-depth security, and cloud storage abstractions.
+
+The Android app is an internet-connected wrapper for the live CloudVault website. It supports account sign-in, file picking, browser storage, and native notification-based downloads. The latest APK is published in [GitHub Releases](https://github.com/durveshk01/cloudvault/releases/latest).
 
 ---
 

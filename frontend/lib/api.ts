@@ -204,6 +204,12 @@ class ApiClient {
   }
 
   async downloadFile(id: string, filename: string): Promise<void> {
+    if (window.CloudVaultAndroid?.downloadFile) {
+      const started = window.CloudVaultAndroid.downloadFile(id, filename);
+      if (!started) throw new Error("Android could not start this download. Please try again.");
+      return;
+    }
+
     const headers = new Headers();
     const token = this.getToken();
     if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -435,6 +441,14 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify({ tag_ids: tagIds }),
     });
+  }
+}
+
+declare global {
+  interface Window {
+    CloudVaultAndroid?: {
+      downloadFile: (id: string, filename: string) => boolean;
+    };
   }
 }
 
