@@ -26,6 +26,16 @@ from app.utils.file_utils import is_previewable
 router = APIRouter(prefix="/api", tags=["Sharing"])
 
 
+async def _read_shared_file(storage, storage_key: str) -> bytes:
+    try:
+        return await storage.get_file(storage_key)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The stored file content is unavailable. Ask the owner to upload the file again.",
+        ) from exc
+
+
 @router.post("/files/{file_id}/shares", response_model=FileShareResponse, status_code=status.HTTP_201_CREATED)
 def share_file_with_user(
     file_id: uuid.UUID,
@@ -172,11 +182,10 @@ async def download_public_shared_file(
             detail="This link is view-only. Direct download is not permitted.",
         )
 
-    # Increment download counter
-    ShareService.increment_download_count(db, link.id)
-
     storage = get_storage_provider()
-    content = await storage.get_file(file.storage_key)
+    content = await _read_shared_file(storage, file.storage_key)
+    # Count only downloads whose stored content is available.
+    ShareService.increment_download_count(db, link.id)
     safe_name = file.original_filename.encode("ascii", "ignore").decode("ascii") or "shared_file"
     return StreamingResponse(
         io.BytesIO(content),
@@ -194,7 +203,7 @@ async def preview_public_shared_file(
     """Safe inline preview of public shared file."""
     link, file = ShareService.verify_public_link(db, token, password=password)
     storage = get_storage_provider()
-    content = await storage.get_file(file.storage_key)
+    content = await _read_shared_file(storage, file.storage_key)
     mime = file.mime_type or "text/plain"
     if mime == "image/svg+xml" or mime == "text/html":
         mime = "text/plain"

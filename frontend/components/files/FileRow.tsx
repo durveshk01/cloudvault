@@ -166,15 +166,22 @@ export function FileRow({
                 <Eye className="w-3.5 h-3.5" />
                 Preview
               </button>
-              <a
-                href={api.getFileDownloadUrl(file.id)}
-                download={file.original_filename}
-                onClick={(e) => e.stopPropagation()}
+              <button
+                type="button"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setShowMenu(false);
+                  try {
+                    await api.downloadFile(file.id, file.original_filename);
+                  } catch (error) {
+                    window.alert(error instanceof Error ? error.message : "The file could not be downloaded.");
+                  }
+                }}
                 className="w-full text-left px-3 py-1.5 hover:bg-accent text-foreground flex items-center gap-2"
               >
                 <Download className="w-3.5 h-3.5" />
                 Download
-              </a>
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();

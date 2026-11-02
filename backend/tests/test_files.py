@@ -2,6 +2,7 @@
 
 import io
 import pytest
+from app.storage import get_storage_provider
 
 
 def test_upload_file_success(client, auth_headers):
@@ -41,6 +42,24 @@ def test_download_file(client, auth_headers):
     download_res = client.get(f"/api/files/{file_id}/download", headers=auth_headers)
     assert download_res.status_code == 200
     assert download_res.content == content
+
+
+def test_download_missing_storage_returns_actionable_404(client, auth_headers):
+    upload_res = client.post(
+        "/api/files/upload",
+        headers=auth_headers,
+        files={"file": ("missing_blob.txt", io.BytesIO(b"File contents"), "text/plain")},
+    )
+    file_data = upload_res.json()
+    storage = get_storage_provider()
+    storage._resolve_path(file_data["storage_key"]).unlink()
+
+    response = client.get(
+        f"/api/files/{file_data['id']}/download",
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+    assert "upload the file again" in response.json()["detail"].lower()
 
 
 def test_user_data_isolation(client, auth_headers, second_user_headers):

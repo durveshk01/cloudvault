@@ -36,6 +36,7 @@ export function FileDetailsPanel({
 }: FileDetailsPanelProps) {
   const [newTag, setNewTag] = useState("");
   const [isAddingTag, setIsAddingTag] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   if (!file) return null;
 
@@ -49,6 +50,17 @@ export function FileDetailsPanel({
       await api.deleteFile(file.id);
       onClose();
       onRefresh();
+    }
+  };
+
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    try {
+      await api.downloadFile(file.id, file.original_filename);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "The file could not be downloaded.");
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -108,14 +120,16 @@ export function FileDetailsPanel({
           </p>
 
           <div className="flex items-center gap-2 mt-3">
-            <a
-              href={api.getFileDownloadUrl(file.id)}
-              download={file.original_filename}
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={isDownloading}
               className="p-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-colors"
-              title="Download"
+              title={isDownloading ? "Preparing download" : "Download"}
+              aria-label={`Download ${file.original_filename}`}
             >
               <Download className="w-4 h-4" />
-            </a>
+            </button>
             <button
               onClick={onShare}
               className="p-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground transition-colors"

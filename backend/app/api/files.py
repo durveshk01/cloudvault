@@ -29,6 +29,16 @@ from app.utils.file_utils import sanitize_filename, determine_mime_type
 router = APIRouter(prefix="/api/files", tags=["Files"])
 
 
+async def _read_stored_file(storage, storage_key: str) -> bytes:
+    try:
+        return await storage.get_file(storage_key)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The stored file content is unavailable. Please upload the file again.",
+        ) from exc
+
+
 def _to_file_response(file) -> FileResponse:
     tags = []
     if hasattr(file, "file_tags") and file.file_tags:
@@ -209,7 +219,7 @@ async def download_file(
     if presigned:
         return {"download_url": presigned}
 
-    content_bytes = await storage.get_file(file.storage_key)
+    content_bytes = await _read_stored_file(storage, file.storage_key)
     safe_name = file.original_filename.encode("ascii", "ignore").decode("ascii") or "download"
     return StreamingResponse(
         io.BytesIO(content_bytes),
@@ -227,7 +237,7 @@ async def preview_file(
     """Inline safe preview of file content for supported types."""
     file, _ = FileService.check_file_access(db, file_id, current_user.id)
     storage = get_storage_provider()
-    content_bytes = await storage.get_file(file.storage_key)
+    content_bytes = await _read_stored_file(storage, file.storage_key)
     mime = file.mime_type or "text/plain"
     # Ensure SVG or HTML is served safely to prevent XSS in application origin
     if mime == "image/svg+xml" or mime == "text/html":

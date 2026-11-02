@@ -203,6 +203,45 @@ class ApiClient {
     return `/api/files/${id}/download`;
   }
 
+  async downloadFile(id: string, filename: string): Promise<void> {
+    const headers = new Headers();
+    const token = this.getToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+
+    const response = await fetch(this.getFileDownloadUrl(id), {
+      headers,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      let message = "The file could not be downloaded.";
+      try {
+        const error = await response.json();
+        message = error.detail || error.message || message;
+      } catch {
+        message = response.statusText || message;
+      }
+      throw new Error(message);
+    }
+
+    if (response.headers.get("content-type")?.includes("application/json")) {
+      const result = await response.json();
+      if (result.download_url) {
+        window.location.assign(result.download_url);
+        return;
+      }
+    }
+
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
+
   getFilePreviewUrl(id: string): string {
     return `/api/files/${id}/preview`;
   }
