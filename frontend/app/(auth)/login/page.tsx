@@ -2,13 +2,11 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Shield, Lock, Mail, ArrowRight, AlertCircle, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,38 +35,39 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <div className="w-full max-w-md space-y-6">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4 py-12 dark:bg-slate-950 sm:px-6">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-100/80 via-slate-50 to-slate-50 dark:from-indigo-950/50 dark:via-slate-950 dark:to-slate-950" />
+      <div className="relative w-full max-w-md space-y-7">
         {/* Branding header */}
-        <div className="text-center space-y-2">
+        <div className="space-y-3 text-center">
           <Link href="/" className="inline-flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
-              <Shield className="w-5 h-5" />
+              <Shield className="h-5 w-5" strokeWidth={2.2} />
             </div>
-            <span className="font-extrabold text-2xl tracking-tight text-foreground">
+            <span className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
               CloudVault
             </span>
           </Link>
-          <h2 className="text-xl font-bold text-foreground">Welcome back</h2>
-          <p className="text-xs text-muted-foreground">
+          <h1 className="pt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Welcome back</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             Sign in to access your secure files and storage
           </p>
         </div>
 
         {/* Demo Account Banner */}
-        <div className="p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/30 flex items-center justify-between text-xs">
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-white/80 p-4 text-sm shadow-sm shadow-indigo-950/5 backdrop-blur dark:border-indigo-900/70 dark:bg-slate-900/80">
           <div>
-            <span className="font-semibold text-indigo-900 dark:text-indigo-200">
-              Testing the application?
+            <span className="font-semibold text-slate-800 dark:text-slate-100">
+              Trying CloudVault?
             </span>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Use seeded demo credentials with 1-click
             </p>
           </div>
           <button
             type="button"
             onClick={handleFillDemo}
-            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs flex items-center gap-1 shadow-sm transition-colors"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
           >
             <KeyRound className="w-3.5 h-3.5" />
             Fill Demo
@@ -76,7 +75,7 @@ export default function LoginPage() {
         </div>
 
         {/* Login Form */}
-        <div className="p-6 rounded-2xl border border-border bg-card shadow-xl space-y-4">
+        <div className="space-y-5 rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 sm:p-8">
           {error && (
             <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs font-medium flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -84,37 +83,41 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <form onSubmit={handleSubmit} className="space-y-5 text-sm">
             <div>
-              <label className="block font-medium text-foreground mb-1.5">
+              <label htmlFor="email" className="mb-2 block font-medium text-slate-700 dark:text-slate-200">
                 Email Address
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="email"
+                  autoComplete="email"
                   type="email"
                   required
                   placeholder="alex@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-accent/40 border border-border rounded-lg pl-9 pr-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:bg-slate-800"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block font-medium text-foreground mb-1.5">
+              <label htmlFor="password" className="mb-2 block font-medium text-slate-700 dark:text-slate-200">
                 Password
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="password"
+                  autoComplete="current-password"
                   type="password"
                   required
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-accent/40 border border-border rounded-lg pl-9 pr-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:bg-slate-800"
                 />
               </div>
             </div>
@@ -122,25 +125,25 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all text-xs"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? "Signing in..." : "Sign In to Vault"}
-              <ArrowRight className="w-3.5 h-3.5" />
+              <ArrowRight className="h-4 w-4" />
             </button>
           </form>
         </div>
 
         {/* Footer Link */}
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-center text-sm text-slate-500 dark:text-slate-400">
           Don't have an account?{" "}
           <Link
             href="/register"
-            className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+            className="font-semibold text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300"
           >
             Create an account
           </Link>
         </p>
       </div>
-    </div>
+    </main>
   );
 }
