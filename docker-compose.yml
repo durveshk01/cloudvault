@@ -52,15 +52,16 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-cloudvault}:${POSTGRES_PASSWORD:-cloudvault_secure_pass_123}@db:5432/${POSTGRES_DB:-cloudvault}
-      - SECRET_KEY=${SECRET_KEY:-cloudvault_production_jwt_secret_key_min_32_chars_long!}
+      - APP_SECRET=${APP_SECRET:-cloudvault_local_development_secret_key_change_me}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
       - REFRESH_TOKEN_EXPIRE_DAYS=7
-      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-local}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
       - LOCAL_STORAGE_PATH=/app/storage_data
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-cloudvault-bucket}
+      - S3_BUCKET=${S3_BUCKET:-cloudvault-bucket}
       - S3_ENDPOINT_URL=http://minio:9000
-      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-cloudvault_minio}
-      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-minio_secure_pass_123}
+      - S3_ACCESS_KEY_ID=${MINIO_ROOT_USER:-cloudvault_minio}
+      - S3_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-minio_secure_pass_123}
       - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
     ports:
       - "8000:8000"

@@ -1,6 +1,7 @@
 """Unit and integration tests for authentication workflows."""
 
 import pytest
+from app.core.config import settings
 
 
 def test_registration_success(client):
@@ -47,7 +48,8 @@ def test_registration_password_mismatch(client):
     assert res.status_code == 422
 
 
-def test_login_success(client):
+def test_login_success(client, monkeypatch):
+    monkeypatch.setattr(settings, "COOKIE_SECURE", True)
     client.post(
         "/api/auth/register",
         json={
@@ -66,6 +68,19 @@ def test_login_success(client):
     assert "access_token" in data
     assert "refresh_token" in data
     assert data["token_type"] == "bearer"
+    cookies = res.headers.get_list("set-cookie")
+    assert any(
+        "access_token=" in cookie
+        and "httponly" in cookie.lower()
+        and "secure" in cookie.lower()
+        for cookie in cookies
+    )
+    assert any(
+        "refresh_token=" in cookie
+        and "httponly" in cookie.lower()
+        and "secure" in cookie.lower()
+        for cookie in cookies
+    )
 
 
 def test_login_invalid_password(client):

@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "CloudVault"
     APP_SECRET: str = "change-me-in-production-use-a-long-random-string"
     DEBUG: bool = False
+    COOKIE_SECURE: bool = False
 
     DATABASE_URL: str = "sqlite:///./cloudvault.db"
 

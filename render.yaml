@@ -16,6 +16,8 @@ services:
           property: connectionString
       - key: APP_SECRET
         generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
       - key: STORAGE_BACKEND
         value: local
       - key: LOCAL_STORAGE_PATH

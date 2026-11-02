@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
+from app.core.config import settings
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -44,7 +45,7 @@ def login(
         value=tokens.access_token,
         httponly=True,
         samesite="lax",
-        secure=False,  # Set to True in HTTPS production
+        secure=settings.COOKIE_SECURE,
         max_age=30 * 60,
     )
     response.set_cookie(
@@ -52,7 +53,7 @@ def login(
         value=tokens.refresh_token,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         max_age=7 * 24 * 3600,
     )
     return tokens
@@ -71,7 +72,7 @@ def refresh_token(
         value=tokens.access_token,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         max_age=30 * 60,
     )
     return tokens
