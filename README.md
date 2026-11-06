@@ -11,7 +11,7 @@
 [![Python 3.12](https://img.shields.io/badge/Language-Python_3.12-3776AB.svg?style=flat&logo=python)](https://python.org)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL_16-4169E1.svg?style=flat&logo=postgresql)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Deployment-Docker_Compose-2496ED.svg?style=flat&logo=docker)](https://www.docker.com)
-[![Pytest](https://img.shields.io/badge/Tests-26%20Passed-brightgreen.svg?style=flat)](https://docs.pytest.org)
+[![Pytest](https://img.shields.io/badge/Tests-27%20Passed-brightgreen.svg?style=flat)](https://docs.pytest.org)
 
 **CloudVault** is an enterprise-grade cloud file storage and secure sharing platform built from the ground up with **FastAPI**, **Next.js 14 App Router**, **TypeScript**, and **PostgreSQL**. Designed with a commercial SaaS user experience inspired by Google Drive and Dropbox, CloudVault demonstrates modern full-stack software engineering, defense-in-depth security, and cloud storage abstractions.
 
@@ -180,7 +180,7 @@ All **26 tests** execute against an isolated in-memory SQLite database covering:
 cd frontend
 npm run build
 ```
-Compiles and prerenders all 18 routes with zero type errors.
+Compiles and prerenders all 19 routes with zero type errors.
 
 ---
 
