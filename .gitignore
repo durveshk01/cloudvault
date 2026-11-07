@@ -79,6 +79,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Android build artifacts
+*.apk
+*.aab
+.gradle/
+android-app/**/build/
+
 # IDE and OS
 .vscode/
 .idea/
