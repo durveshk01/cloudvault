@@ -35,7 +35,22 @@ async def seed_database():
         # Check if demo user already exists
         existing_user = db.query(User).filter(User.email == DEMO_EMAIL).first()
         if existing_user:
-            print(f"Demo user '{DEMO_EMAIL}' already exists. Skipping seed.")
+            print(f"Demo user '{DEMO_EMAIL}' already exists. Verifying storage files...")
+            sample_contents = {
+                "Welcome_to_CloudVault.md": b"# Welcome to CloudVault\n\nCloudVault is a secure, modern cloud file storage and sharing platform.\n\n### Key Features:\n- Fast and secure file upload\n- Real-time previews\n- Granular sharing controls\n- File versioning\n- Responsive desktop & mobile design\n",
+                "project_metrics_2026.csv": b"Month,Uploads,Downloads,StorageGB\nJan,120,450,12.5\nFeb,180,620,18.2\nMar,240,890,25.6\nApr,310,1100,34.1\nMay,420,1450,45.8\n",
+                "system_architecture_overview.txt": b"CloudVault Architecture Overview\n===============================\nFrontend: Next.js 14, React 18, Tailwind CSS, Lucide icons\nBackend: FastAPI, SQLAlchemy 2.0, Pydantic v2\nStorage: Abstract Storage Interface (Local Filesystem / AWS S3 / MinIO)\nDatabase: PostgreSQL\nSecurity: Argon2id, JWT, Presigned URLs, RBAC\n",
+            }
+            user_files = db.query(File).filter(File.owner_id == existing_user.id).all()
+            for f in user_files:
+                exists = await storage.file_exists(f.storage_key)
+                if not exists:
+                    content = sample_contents.get(
+                        f.original_filename,
+                        f"Sample file content for {f.original_filename}\n".encode("utf-8"),
+                    )
+                    await storage.save_file(f.storage_key, content)
+                    print(f"Restored storage for missing file: {f.original_filename}")
             return
 
         print("Creating demo user...")

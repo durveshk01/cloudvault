@@ -25,6 +25,8 @@ def get_current_user(
         token = token_cred.credentials
     elif "access_token" in request.cookies:
         token = request.cookies.get("access_token")
+    elif "token" in request.query_params:
+        token = request.query_params.get("token")
 
     if not token:
         raise HTTPException(

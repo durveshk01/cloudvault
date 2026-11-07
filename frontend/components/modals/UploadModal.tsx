@@ -127,7 +127,10 @@ export function UploadModal({
               type="file"
               multiple
               ref={fileInputRef}
-              onChange={(e) => handleFilesAdded(e.target.files)}
+              onChange={(e) => {
+                handleFilesAdded(e.target.files);
+                e.target.value = "";
+              }}
               className="hidden"
             />
             <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-3">

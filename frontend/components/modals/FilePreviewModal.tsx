@@ -30,7 +30,10 @@ export function FilePreviewModal({ file, isOpen, onClose }: FilePreviewModalProp
       const ext = file.original_filename.split(".").pop()?.toLowerCase();
       if (ext !== "pdf" && ext !== "doc" && ext !== "docx" && ext !== "xls" && ext !== "xlsx" && ext !== "ppt" && ext !== "pptx") {
         setIsLoadingText(true);
-        fetch(api.getFilePreviewUrl(file.id), { credentials: "include" })
+        const headers: HeadersInit = {};
+        const token = api.getToken();
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        fetch(api.getFilePreviewUrl(file.id), { credentials: "include", headers })
           .then((response) => {
             if (!response.ok) throw new Error("Preview request failed");
             return response.text();

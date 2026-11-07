@@ -15,7 +15,7 @@ import {
   User,
 } from "@/types";
 
-const API_BASE = "";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 class ApiClient {
   private token: string | null = null;
@@ -25,8 +25,10 @@ class ApiClient {
     if (typeof window !== "undefined") {
       if (token) {
         sessionStorage.setItem("cv_token", token);
+        document.cookie = `access_token=${token}; path=/; max-age=1800; SameSite=Lax`;
       } else {
         sessionStorage.removeItem("cv_token");
+        document.cookie = "access_token=; path=/; max-age=0; SameSite=Lax";
       }
     }
   }
@@ -200,18 +202,23 @@ class ApiClient {
   }
 
   getFileDownloadUrl(id: string): string {
-    return `/api/files/${id}/download`;
+    const token = this.getToken();
+    const q = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `${API_BASE}/api/files/${id}/download${q}`;
   }
 
   async downloadFile(id: string, filename: string): Promise<void> {
-    if (window.CloudVaultAndroid?.downloadFile) {
+    const token = this.getToken();
+    if (window.CloudVaultAndroid?.downloadFileWithToken && token) {
+      const started = window.CloudVaultAndroid.downloadFileWithToken(id, filename, token);
+      if (started) return;
+    } else if (window.CloudVaultAndroid?.downloadFile) {
       const started = window.CloudVaultAndroid.downloadFile(id, filename);
       if (!started) throw new Error("Android could not start this download. Please try again.");
       return;
     }
 
     const headers = new Headers();
-    const token = this.getToken();
     if (token) headers.set("Authorization", `Bearer ${token}`);
 
     const response = await fetch(this.getFileDownloadUrl(id), {
@@ -249,7 +256,9 @@ class ApiClient {
   }
 
   getFilePreviewUrl(id: string): string {
-    return `/api/files/${id}/preview`;
+    const token = this.getToken();
+    const q = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `${API_BASE}/api/files/${id}/preview${q}`;
   }
 
   // --- Versions ---
@@ -364,12 +373,12 @@ class ApiClient {
 
   getPublicDownloadUrl(token: string, password?: string): string {
     const q = password ? `?password=${encodeURIComponent(password)}` : "";
-    return `/api/public/shares/${token}/download${q}`;
+    return `${API_BASE}/api/public/shares/${token}/download${q}`;
   }
 
   getPublicPreviewUrl(token: string, password?: string): string {
     const q = password ? `?password=${encodeURIComponent(password)}` : "";
-    return `/api/public/shares/${token}/preview${q}`;
+    return `${API_BASE}/api/public/shares/${token}/preview${q}`;
   }
 
   // --- Dashboard & Storage ---
@@ -448,6 +457,7 @@ declare global {
   interface Window {
     CloudVaultAndroid?: {
       downloadFile: (id: string, filename: string) => boolean;
+      downloadFileWithToken?: (id: string, filename: string, token: string) => boolean;
     };
   }
 }

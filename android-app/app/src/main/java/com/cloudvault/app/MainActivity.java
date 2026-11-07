@@ -58,7 +58,7 @@ public final class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
-                if ("https".equals(uri.getScheme()) && APP_HOST.equals(uri.getHost())) return false;
+                if ("https".equals(uri.getScheme()) && (APP_HOST.equals(uri.getHost()) || (uri.getHost() != null && uri.getHost().endsWith(".onrender.com")))) return false;
                 openExternal(uri);
                 return true;
             }
@@ -87,7 +87,7 @@ public final class MainActivity extends Activity {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 Uri uri = Uri.parse(url);
-                if (!"https".equals(uri.getScheme()) || !APP_HOST.equals(uri.getHost())) {
+                if (!"https".equals(uri.getScheme()) || !(APP_HOST.equals(uri.getHost()) || (uri.getHost() != null && uri.getHost().endsWith(".onrender.com")))) {
                     openExternal(uri);
                     return;
                 }
@@ -145,14 +145,22 @@ public final class MainActivity extends Activity {
     private final class AndroidDownloads {
         @JavascriptInterface
         public boolean downloadFile(String fileId, String filename) {
+            return downloadFileWithToken(fileId, filename, null);
+        }
+
+        @JavascriptInterface
+        public boolean downloadFileWithToken(String fileId, String filename, String token) {
             if (fileId == null || !fileId.matches("[0-9a-fA-F-]{36}")) return false;
-            Uri uri = Uri.parse(START_URL).buildUpon()
+            Uri.Builder builder = Uri.parse(START_URL).buildUpon()
                     .appendPath("api")
                     .appendPath("files")
                     .appendPath(fileId)
                     .appendPath("download")
-                    .appendQueryParameter("direct", "true")
-                    .build();
+                    .appendQueryParameter("direct", "true");
+            if (token != null && !token.isEmpty()) {
+                builder.appendQueryParameter("token", token);
+            }
+            Uri uri = builder.build();
             runOnUiThread(() -> enqueueDownload(uri, filename == null ? "download" : filename, null));
             return true;
         }
