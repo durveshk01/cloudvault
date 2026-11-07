@@ -27,7 +27,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         if "/preview" in request.url.path:
             response.headers["Content-Security-Policy"] = (
-                "frame-ancestors 'self' https://cloudvault-frontend-tnwe.onrender.com http://localhost:3000"
+                "frame-ancestors 'self' https://cloudvault-frontend-tnwe.onrender.com https://appassets.androidplatform.net http://localhost:3000"
             )
         else:
             response.headers["X-Frame-Options"] = "DENY"
@@ -60,9 +60,14 @@ app = FastAPI(
 app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS configuration
+cors_origins = list(settings.cors_origin_list)
+for extra_origin in ["https://appassets.androidplatform.net", "http://localhost:3000"]:
+    if extra_origin not in cors_origins:
+        cors_origins.append(extra_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
+    allow_origins=cors_origins,
     allow_origin_regex=r"^https://.*\.onrender\.com$",
     allow_credentials=True,
     allow_methods=["*"],

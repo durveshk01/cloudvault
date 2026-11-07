@@ -16,18 +16,23 @@ import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+import androidx.webkit.WebViewAssetLoader;
 
 public final class MainActivity extends Activity {
-    private static final String START_URL = "https://cloudvault-frontend-tnwe.onrender.com/";
-    private static final String APP_HOST = "cloudvault-frontend-tnwe.onrender.com";
+    private static final String ASSET_HOST = "appassets.androidplatform.net";
+    private static final String LOCAL_START_URL = "https://appassets.androidplatform.net/assets/index.html";
+    private static final String REMOTE_FALLBACK_URL = "https://cloudvault-frontend-tnwe.onrender.com/";
+    private static final String BACKEND_API_BASE = "https://cloudvault-backend-wg5r.onrender.com";
     private static final int FILE_PICKER_REQUEST = 4102;
     private static final int DOWNLOAD_PERMISSION_REQUEST = 4103;
 
     private WebView webView;
+    private WebViewAssetLoader assetLoader;
     private ValueCallback<Uri[]> filePickerCallback;
     private Uri pendingDownloadUri;
     private String pendingDownloadName;
@@ -51,14 +56,46 @@ public final class MainActivity extends Activity {
         settings.setSupportMultipleWindows(false);
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
-        cookies.setAcceptThirdPartyCookies(webView, false);
+        cookies.setAcceptThirdPartyCookies(webView, true);
+
+        assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.PathHandler() {
+                    private final WebViewAssetLoader.AssetsPathHandler defaultHandler =
+                            new WebViewAssetLoader.AssetsPathHandler(MainActivity.this);
+
+                    @Override
+                    public WebResourceResponse handle(String path) {
+                        if (path == null || path.isEmpty() || path.endsWith("/")) {
+                            String indexPath = (path == null || path.isEmpty()) ? "index.html" : path + "index.html";
+                            WebResourceResponse resp = defaultHandler.handle(indexPath);
+                            if (resp != null) return resp;
+                        } else if (!path.contains(".")) {
+                            WebResourceResponse resp = defaultHandler.handle(path + "/index.html");
+                            if (resp != null) return resp;
+                        }
+                        return defaultHandler.handle(path);
+                    }
+                })
+                .build();
 
         webView.addJavascriptInterface(new AndroidDownloads(), "CloudVaultAndroid");
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                Uri url = request.getUrl();
+                if (ASSET_HOST.equals(url.getHost())) {
+                    return assetLoader.shouldInterceptRequest(url);
+                }
+                return super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
-                if ("https".equals(uri.getScheme()) && (APP_HOST.equals(uri.getHost()) || (uri.getHost() != null && uri.getHost().endsWith(".onrender.com")))) return false;
+                String host = uri.getHost();
+                if ("https".equals(uri.getScheme()) && (ASSET_HOST.equals(host) || "cloudvault-frontend-tnwe.onrender.com".equals(host) || (host != null && host.endsWith(".onrender.com")))) {
+                    return false;
+                }
                 openExternal(uri);
                 return true;
             }
@@ -87,7 +124,8 @@ public final class MainActivity extends Activity {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 Uri uri = Uri.parse(url);
-                if (!"https".equals(uri.getScheme()) || !(APP_HOST.equals(uri.getHost()) || (uri.getHost() != null && uri.getHost().endsWith(".onrender.com")))) {
+                String host = uri.getHost();
+                if (!"https".equals(uri.getScheme()) || !(ASSET_HOST.equals(host) || "cloudvault-frontend-tnwe.onrender.com".equals(host) || (host != null && host.endsWith(".onrender.com")))) {
                     openExternal(uri);
                     return;
                 }
@@ -95,8 +133,21 @@ public final class MainActivity extends Activity {
             }
         });
 
-        if (savedInstanceState == null) webView.loadUrl(START_URL);
+        String startUrl = hasLocalAssets() ? LOCAL_START_URL : REMOTE_FALLBACK_URL;
+        if (savedInstanceState == null) webView.loadUrl(startUrl);
         else webView.restoreState(savedInstanceState);
+    }
+
+    private boolean hasLocalAssets() {
+        try {
+            String[] list = getAssets().list("");
+            if (list != null) {
+                for (String item : list) {
+                    if ("index.html".equals(item)) return true;
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     private void openExternal(Uri uri) {
@@ -151,7 +202,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface
         public boolean downloadFileWithToken(String fileId, String filename, String token) {
             if (fileId == null || !fileId.matches("[0-9a-fA-F-]{36}")) return false;
-            Uri.Builder builder = Uri.parse(START_URL).buildUpon()
+            Uri.Builder builder = Uri.parse(BACKEND_API_BASE).buildUpon()
                     .appendPath("api")
                     .appendPath("files")
                     .appendPath(fileId)

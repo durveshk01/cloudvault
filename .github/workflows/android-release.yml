@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'android-app/**'
+      - 'frontend/**'
       - '.github/workflows/android-release.yml'
   workflow_dispatch:
   release:
@@ -22,6 +23,19 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend for on-device mobile execution
+        working-directory: frontend
+        run: |
+          npm ci
+          node scripts/build-android.mjs
 
       - name: Set up Java
         uses: actions/setup-java@v5
