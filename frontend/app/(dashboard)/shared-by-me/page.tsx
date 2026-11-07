@@ -53,7 +53,7 @@ export default function SharedByMePage() {
         ) : shares.length === 0 ? (
           <div className="py-16 text-center border-2 border-dashed border-border rounded-2xl bg-card">
             <Share2 className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="font-semibold text-sm text-foreground">You haven't shared any files yet</p>
+            <p className="font-semibold text-sm text-foreground">You haven&apos;t shared any files yet</p>
             <p className="text-xs text-muted-foreground mt-1">
               Select any file in My Files and click Share to grant access to others.
             </p>

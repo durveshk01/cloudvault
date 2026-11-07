@@ -158,7 +158,7 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
             </div>
             <div>
               <h3 id="share-modal-title" className="font-semibold text-sm text-foreground">
-                Share "{file.original_filename}"
+                Share &ldquo;{file.original_filename}&rdquo;
               </h3>
             </div>
           </div>

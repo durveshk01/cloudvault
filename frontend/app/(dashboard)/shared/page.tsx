@@ -64,7 +64,7 @@ export default function SharedWithMePage() {
             <Users className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
             <p className="font-semibold text-sm text-foreground">No files shared with you</p>
             <p className="text-xs text-muted-foreground mt-1">
-              When colleagues or teammates share files with your email, they'll show up here.
+              When colleagues or teammates share files with your email, they&apos;ll show up here.
             </p>
           </div>
         ) : (

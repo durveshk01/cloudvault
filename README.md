@@ -11,7 +11,7 @@
 [![Python 3.12](https://img.shields.io/badge/Language-Python_3.12-3776AB.svg?style=flat&logo=python)](https://python.org)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL_16-4169E1.svg?style=flat&logo=postgresql)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Deployment-Docker_Compose-2496ED.svg?style=flat&logo=docker)](https://www.docker.com)
-[![Pytest](https://img.shields.io/badge/Tests-27%20Passed-brightgreen.svg?style=flat)](https://docs.pytest.org)
+[![Pytest](https://img.shields.io/badge/Tests-34%20Passed-brightgreen.svg?style=flat)](https://docs.pytest.org)
 
 **CloudVault** is an enterprise-grade cloud file storage and secure sharing platform built from the ground up with **FastAPI**, **Next.js 14 App Router**, **TypeScript**, and **PostgreSQL**. Designed with a commercial SaaS user experience inspired by Google Drive and Dropbox, CloudVault demonstrates modern full-stack software engineering, defense-in-depth security, and cloud storage abstractions.
 
@@ -166,7 +166,7 @@ Use the pre-seeded account to explore all features instantly:
 cd backend
 python -m pytest tests/ -v
 ```
-All **27 tests** execute against an isolated in-memory SQLite database covering:
+All **34 tests** execute against an isolated in-memory SQLite database covering:
 - Authentication & registration workflows
 - Data isolation between multiple users
 - File uploads, downloads, and checksum verification

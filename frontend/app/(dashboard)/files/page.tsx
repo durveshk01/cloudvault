@@ -184,7 +184,7 @@ function FilesContent() {
 
               {searchParam && (
                 <span className="ml-2 text-indigo-600 font-medium">
-                  Search results for: "{searchParam}"
+                  Search results for: &ldquo;{searchParam}&rdquo;
                 </span>
               )}
             </div>
