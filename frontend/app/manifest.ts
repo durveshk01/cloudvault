@@ -1,0 +1,20 @@
+import { MetadataRoute } from "next";
+
+export default function manifest(): MetadataRoute.Manifest {
+  return {
+    name: "CloudVault — Secure Cloud Storage & Sharing",
+    short_name: "CloudVault",
+    description: "Enterprise-grade cloud file storage and secure sharing platform.",
+    start_url: "/",
+    display: "standalone",
+    background_color: "#050b1d",
+    theme_color: "#4f46e5",
+    icons: [
+      {
+        src: "/icon.svg",
+        sizes: "any",
+        type: "image/svg+xml",
+      },
+    ],
+  };
+}

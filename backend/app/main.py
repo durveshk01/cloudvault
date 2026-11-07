@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -19,6 +20,7 @@ from app.api import (
     trash,
 )
 from app.core.config import settings
+from app.core.rate_limit import RateLimitMiddleware
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -56,8 +58,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# GZip Compression for payloads over 1000 bytes
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # Security Headers
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Rate Limiting
+app.add_middleware(RateLimitMiddleware)
 
 # CORS configuration
 cors_origins = list(settings.cors_origin_list)

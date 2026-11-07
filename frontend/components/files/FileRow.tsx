@@ -20,6 +20,7 @@ import {
 import { FileItem } from "@/types";
 import { formatBytes, formatDate, getFileCategory } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useToast } from "@/lib/toast-context";
 
 interface FileRowProps {
   file: FileItem;
@@ -42,6 +43,7 @@ export function FileRow({
   onDetails,
   onRefresh,
 }: FileRowProps) {
+  const toast = useToast();
   const [showMenu, setShowMenu] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -174,7 +176,7 @@ export function FileRow({
                   try {
                     await api.downloadFile(file.id, file.original_filename);
                   } catch (error) {
-                    window.alert(error instanceof Error ? error.message : "The file could not be downloaded.");
+                    toast.error(error instanceof Error ? error.message : "The file could not be downloaded.");
                   }
                 }}
                 className="w-full text-left px-3 py-1.5 hover:bg-accent text-foreground flex items-center gap-2"

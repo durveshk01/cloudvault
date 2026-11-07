@@ -4,6 +4,7 @@ import React, { useState, useRef } from "react";
 import { Upload, X, CheckCircle, AlertCircle, File, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
+import { useToast } from "@/lib/toast-context";
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export function UploadModal({
   folderId,
   onUploadComplete,
 }: UploadModalProps) {
+  const toast = useToast();
   const [tasks, setTasks] = useState<UploadTask[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,15 +65,18 @@ export function UploadModal({
       setTasks((prev) =>
         prev.map((t) => (t.id === task.id ? { ...t, status: "success", progress: 100 } : t))
       );
+      toast.success(`Uploaded ${task.file.name} successfully`);
       if (onUploadComplete) onUploadComplete();
     } catch (err: any) {
+      const errorMsg = err.message || "Upload failed. Storage quota or size limit exceeded.";
+      toast.error(errorMsg);
       setTasks((prev) =>
         prev.map((t) =>
           t.id === task.id
             ? {
                 ...t,
                 status: "error",
-                errorMessage: err.message || "Upload failed. Storage quota or size limit exceeded.",
+                errorMessage: errorMsg,
               }
             : t
         )

@@ -18,6 +18,7 @@ import { FileItem, FileShare, ShareLink } from "@/types";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { LoadError } from "@/components/ui/LoadError";
+import { useToast } from "@/lib/toast-context";
 
 interface ShareModalProps {
   file: FileItem | null;
@@ -26,6 +27,7 @@ interface ShareModalProps {
 }
 
 export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<"users" | "links">("users");
 
   // User share state
@@ -141,9 +143,11 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
+      toast.success("Share link copied to clipboard!");
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setLinkError("The link could not be copied. Select and copy it manually.");
+      toast.error("Could not copy link to clipboard.");
     }
   };
 

@@ -114,3 +114,27 @@ def test_file_preview_with_token_and_csp(client, auth_headers):
     # CSP should be set and X-Frame-Options must not be DENY
     assert "frame-ancestors" in preview_res.headers.get("content-security-policy", "")
     assert preview_res.headers.get("x-frame-options") is None
+
+
+def test_rate_limiting(client):
+    from app.core.rate_limit import limiter
+    limiter.clear()
+
+    # The rate limit on /api/auth/login is 10/minute
+    statuses = []
+    for _ in range(12):
+        res = client.post(
+            "/api/auth/login",
+            json={"email": "fake@cloudvault.com", "password": "wrong_password_123"},
+            headers={"x-test-rate-limit": "true"},
+        )
+        statuses.append(res.status_code)
+
+    # First request should fail auth with 401, not 429
+    assert statuses[0] == 401
+    # Requests exceeding limit should be throttled (429)
+    assert 429 in statuses
+    assert statuses[-1] == 429
+
+    limiter.clear()
+

@@ -11,7 +11,7 @@
 [![Python 3.12](https://img.shields.io/badge/Language-Python_3.12-3776AB.svg?style=flat&logo=python)](https://python.org)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL_16-4169E1.svg?style=flat&logo=postgresql)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Deployment-Docker_Compose-2496ED.svg?style=flat&logo=docker)](https://www.docker.com)
-[![Pytest](https://img.shields.io/badge/Tests-34%20Passed-brightgreen.svg?style=flat)](https://docs.pytest.org)
+[![Pytest](https://img.shields.io/badge/Tests-35%20Passed-brightgreen.svg?style=flat)](https://docs.pytest.org)
 
 **CloudVault** is an enterprise-grade cloud file storage and secure sharing platform built from the ground up with **FastAPI**, **Next.js 14 App Router**, **TypeScript**, and **PostgreSQL**. Designed with a commercial SaaS user experience inspired by Google Drive and Dropbox, CloudVault demonstrates modern full-stack software engineering, defense-in-depth security, and cloud storage abstractions.
 
@@ -28,6 +28,8 @@ The CloudVault Android application runs the complete user interface on-device, l
 - **In-Browser Previews**: Native modal previewing for images, PDFs, code files, and plain text.
 - **Search & Filtering**: Instant server-side search by filename, category filter (Documents, Images, Media, Archives), and tag filters.
 - **Bulk Actions**: Multi-select toolbar for batch moves, soft-deletes, and restorations.
+- **Interactive Feedback**: Native non-blocking toast notifications for uploads, bulk actions, and link sharing.
+- **PWA Ready**: Web App Manifest and mobile viewport meta for progressive web installation.
 
 ### 🔒 Enterprise Sharing & Access Control
 - **Direct User Sharing**: Share files with other registered users as a **Viewer** or **Editor**.
@@ -54,7 +56,7 @@ The CloudVault Android application runs the complete user interface on-device, l
 | Layer | Technologies |
 |---|---|
 | **Frontend** | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, Lucide Icons, Recharts, Zod |
-| **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0, Pydantic v2, Alembic, SlowAPI |
+| **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0, Pydantic v2, Alembic, Sliding-Window Rate Limiting, GZip |
 | **Database** | PostgreSQL 16 (Production/Docker), SQLite (Zero-config local development) |
 | **Storage Engine** | Abstract Storage Provider: Local Filesystem Storage & AWS S3 / MinIO Object Storage |
 | **Authentication** | Argon2id Password Hashing, HMAC-SHA256 JWT, Secure HttpOnly SameSite Cookies |

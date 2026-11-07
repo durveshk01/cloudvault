@@ -3,6 +3,7 @@
 import React from "react";
 import { X, Trash2, Star, RotateCcw, CheckSquare } from "lucide-react";
 import { api } from "@/lib/api";
+import { useToast } from "@/lib/toast-context";
 
 interface BulkActionsToolbarProps {
   selectedIds: string[];
@@ -17,34 +18,56 @@ export function BulkActionsToolbar({
   onRefresh,
   isTrashPage = false,
 }: BulkActionsToolbarProps) {
+  const toast = useToast();
+
   if (selectedIds.length === 0) return null;
 
   const handleBulkDelete = async () => {
     if (confirm(`Move ${selectedIds.length} selected files to trash?`)) {
-      await api.bulkAction(selectedIds, "delete");
-      onClearSelection();
-      onRefresh();
+      try {
+        await api.bulkAction(selectedIds, "delete");
+        toast.success(`Moved ${selectedIds.length} item(s) to trash`);
+        onClearSelection();
+        onRefresh();
+      } catch (err: any) {
+        toast.error(err.message || "Failed to delete selected items");
+      }
     }
   };
 
   const handleBulkPermanentDelete = async () => {
     if (confirm(`Permanently delete ${selectedIds.length} files? This cannot be undone.`)) {
-      await api.bulkAction(selectedIds, "permanent_delete");
-      onClearSelection();
-      onRefresh();
+      try {
+        await api.bulkAction(selectedIds, "permanent_delete");
+        toast.success(`Permanently deleted ${selectedIds.length} item(s)`);
+        onClearSelection();
+        onRefresh();
+      } catch (err: any) {
+        toast.error(err.message || "Failed to permanently delete items");
+      }
     }
   };
 
   const handleBulkRestore = async () => {
-    await api.bulkAction(selectedIds, "restore");
-    onClearSelection();
-    onRefresh();
+    try {
+      await api.bulkAction(selectedIds, "restore");
+      toast.success(`Restored ${selectedIds.length} item(s)`);
+      onClearSelection();
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to restore items");
+    }
   };
 
   const handleBulkStar = async () => {
-    await api.bulkAction(selectedIds, "star");
-    onClearSelection();
-    onRefresh();
+    try {
+      await api.bulkAction(selectedIds, "star");
+      toast.success(`Updated favorites for ${selectedIds.length} item(s)`);
+      onClearSelection();
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to star items");
+    }
   };
 
   return (
