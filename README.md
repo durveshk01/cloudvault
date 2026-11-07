@@ -15,7 +15,7 @@
 
 **CloudVault** is an enterprise-grade cloud file storage and secure sharing platform built from the ground up with **FastAPI**, **Next.js 14 App Router**, **TypeScript**, and **PostgreSQL**. Designed with a commercial SaaS user experience inspired by Google Drive and Dropbox, CloudVault demonstrates modern full-stack software engineering, defense-in-depth security, and cloud storage abstractions.
 
-The Android app is an internet-connected wrapper for the live CloudVault website. It supports account sign-in, file picking, browser storage, and native notification-based downloads. The latest APK is published in [GitHub Releases](https://github.com/durveshk01/cloudvault/releases/latest).
+The CloudVault Android application runs the complete user interface on-device, leveraging the phone's CPU/GPU and local storage via `WebViewAssetLoader` for instant offline loading and navigation, while connecting directly to the FastAPI and PostgreSQL cloud backend on Render for secure storage operations. The latest APK is published in [GitHub Releases](https://github.com/durveshk01/cloudvault/releases/latest).
 
 ---
 
@@ -166,7 +166,7 @@ Use the pre-seeded account to explore all features instantly:
 cd backend
 python -m pytest tests/ -v
 ```
-All **26 tests** execute against an isolated in-memory SQLite database covering:
+All **27 tests** execute against an isolated in-memory SQLite database covering:
 - Authentication & registration workflows
 - Data isolation between multiple users
 - File uploads, downloads, and checksum verification
@@ -180,7 +180,7 @@ All **26 tests** execute against an isolated in-memory SQLite database covering:
 cd frontend
 npm run build
 ```
-Compiles and prerenders all 19 routes with zero type errors.
+Compiles and prerenders all 20 routes with zero type errors.
 
 ---
 
