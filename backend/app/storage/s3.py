@@ -1,8 +1,8 @@
 """S3-compatible object storage provider (AWS S3, MinIO, Cloudflare R2)."""
 
 import asyncio
-import io
-from typing import Generator
+from collections.abc import Generator
+from typing import BinaryIO
 
 try:
     import boto3
@@ -15,6 +15,7 @@ except ImportError:
 
 from app.core.config import settings
 from app.storage.base import StorageProvider
+from app.utils.file_utils import content_disposition
 
 
 class S3StorageProvider(StorageProvider):
@@ -30,9 +31,10 @@ class S3StorageProvider(StorageProvider):
             aws_access_key_id=settings.S3_ACCESS_KEY_ID,
             aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY,
             region_name=settings.S3_REGION,
-            config=Config(signature_version="s3v4"),
+            config=Config(signature_version="s3v4", connect_timeout=10, read_timeout=60, retries={"max_attempts": 2}),
         )
-        self._ensure_bucket()
+        if settings.S3_CREATE_BUCKET:
+            self._ensure_bucket()
 
     def _ensure_bucket(self):
         """Ensure bucket exists in local/test environments like MinIO."""
@@ -41,10 +43,12 @@ class S3StorageProvider(StorageProvider):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             if error_code in ("404", "NoSuchBucket"):
-                try:
-                    self.client.create_bucket(Bucket=self.bucket)
-                except Exception:
-                    pass
+                args = {"Bucket": self.bucket}
+                if settings.S3_REGION != "us-east-1":
+                    args["CreateBucketConfiguration"] = {"LocationConstraint": settings.S3_REGION}
+                self.client.create_bucket(**args)
+            else:
+                raise
 
     async def save_file(self, storage_key: str, content: bytes) -> str:
         def _upload():
@@ -61,28 +65,38 @@ class S3StorageProvider(StorageProvider):
         def _download():
             try:
                 response = self.client.get_object(Bucket=self.bucket, Key=storage_key)
-                return response["Body"].read()
+                with response["Body"] as body:
+                    return body.read()
             except ClientError as e:
-                raise FileNotFoundError(f"File not found in S3: {storage_key}") from e
+                if e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+                    raise FileNotFoundError(f"File not found in S3: {storage_key}") from e
+                raise
 
         return await asyncio.to_thread(_download)
+
+    async def save_file_object(self, storage_key: str, content: BinaryIO) -> str:
+        from boto3.s3.transfer import TransferConfig
+        await asyncio.to_thread(
+            self.client.upload_fileobj, content, self.bucket, storage_key,
+            Config=TransferConfig(max_concurrency=2, multipart_chunksize=8 * 1024 * 1024),
+        )
+        return storage_key
 
     def get_file_stream(self, storage_key: str, chunk_size: int = 65536) -> Generator[bytes, None, None]:
         try:
             response = self.client.get_object(Bucket=self.bucket, Key=storage_key)
-            body = response["Body"]
-            while chunk := body.read(chunk_size):
-                yield chunk
+            with response["Body"] as body:
+                while chunk := body.read(chunk_size):
+                    yield chunk
         except ClientError as e:
-            raise FileNotFoundError(f"File not found in S3: {storage_key}") from e
+            if e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+                raise FileNotFoundError(f"File not found in S3: {storage_key}") from e
+            raise
 
     async def delete_file(self, storage_key: str) -> bool:
         def _delete():
-            try:
-                self.client.delete_object(Bucket=self.bucket, Key=storage_key)
-                return True
-            except ClientError:
-                return False
+            self.client.delete_object(Bucket=self.bucket, Key=storage_key)
+            return True
 
         return await asyncio.to_thread(_delete)
 
@@ -91,8 +105,10 @@ class S3StorageProvider(StorageProvider):
             try:
                 self.client.head_object(Bucket=self.bucket, Key=storage_key)
                 return True
-            except ClientError:
-                return False
+            except ClientError as e:
+                if e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+                    return False
+                raise
 
         return await asyncio.to_thread(_check)
 
@@ -102,7 +118,9 @@ class S3StorageProvider(StorageProvider):
                 response = self.client.head_object(Bucket=self.bucket, Key=storage_key)
                 return response["ContentLength"]
             except ClientError as e:
-                raise FileNotFoundError(f"File not found in S3: {storage_key}") from e
+                if e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+                    raise FileNotFoundError(f"File not found in S3: {storage_key}") from e
+                raise
 
         return await asyncio.to_thread(_size)
 
@@ -124,7 +142,7 @@ class S3StorageProvider(StorageProvider):
                 Params={
                     "Bucket": self.bucket,
                     "Key": storage_key,
-                    "ResponseContentDisposition": f'attachment; filename="{filename}"',
+                     "ResponseContentDisposition": content_disposition(filename),
                 },
                 ExpiresIn=expires_in,
             )

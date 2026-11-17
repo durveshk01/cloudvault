@@ -1,0 +1,6 @@
+.next/
+.next-android/
+out/
+node_modules/
+playwright-report/
+test-results/

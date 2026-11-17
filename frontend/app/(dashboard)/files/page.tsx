@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useCallback, useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   LayoutGrid,
@@ -28,6 +28,7 @@ import { NewFolderModal } from "@/components/modals/NewFolderModal";
 import { FilePreviewModal } from "@/components/modals/FilePreviewModal";
 import { ShareModal } from "@/components/modals/ShareModal";
 import { VersionHistoryModal } from "@/components/modals/VersionHistoryModal";
+import { OrganizeAction, OrganizeFileModal } from "@/components/modals/OrganizeFileModal";
 import { LoadError } from "@/components/ui/LoadError";
 import { api } from "@/lib/api";
 import { BreadcrumbItem, FileItem, FolderItem } from "@/types";
@@ -39,7 +40,7 @@ function FilesContent() {
   const folderIdParam = searchParams.get("folder_id");
   const searchParam = searchParams.get("search");
 
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(folderIdParam);
+  const currentFolderId = folderIdParam;
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -65,29 +66,18 @@ function FilesContent() {
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
   const [shareFile, setShareFile] = useState<FileItem | null>(null);
   const [versionsFile, setVersionsFile] = useState<FileItem | null>(null);
+  const [organize, setOrganize] = useState<{ file?: FileItem; folder?: FolderItem; action: OrganizeAction } | null>(null);
+  const loadGeneration = useRef(0);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setIsLoading(true);
     setHasLoadError(false);
     try {
-      // Load folders in current directory (only when not searching globally)
-      if (!searchParam && category === "all") {
-        const folderList = await api.getFolders(currentFolderId);
-        setFolders(folderList);
-      } else {
-        setFolders([]);
-      }
-
-      // Load breadcrumbs if in subfolder
-      if (currentFolderId) {
-        const bcs = await api.getBreadcrumbs(currentFolderId);
-        setBreadcrumbs(bcs);
-      } else {
-        setBreadcrumbs([]);
-      }
-
-      // Load files
-      const fileData = await api.getFiles({
+      const [folderList, trail, fileData] = await Promise.all([
+        !searchParam && category === "all" ? api.getFolders(currentFolderId) : Promise.resolve([]),
+        currentFolderId ? api.getBreadcrumbs(currentFolderId) : Promise.resolve([]),
+        api.getFiles({
         folder_id: searchParam ? undefined : currentFolderId,
         category: category !== "all" ? category : undefined,
         search: searchParam || undefined,
@@ -95,30 +85,39 @@ function FilesContent() {
         sort_order: sortOrder,
         page: currentPage,
         page_size: 50,
-      });
-
+        }),
+      ]);
+      if (generation !== loadGeneration.current) return;
+      setFolders(folderList);
+      setBreadcrumbs(trail);
       setFiles(fileData.items);
       setTotalFiles(fileData.total);
       setTotalPages(fileData.total_pages);
+      setDetailsFile((previous) => previous ? fileData.items.find((item) => item.id === previous.id) || null : null);
+      setVersionsFile((previous) => previous ? fileData.items.find((item) => item.id === previous.id) || previous : null);
+      setSelectedFileIds((previous) => previous.filter((id) => fileData.items.some((item) => item.id === id)));
     } catch {
-      setHasLoadError(true);
+      if (generation === loadGeneration.current) setHasLoadError(true);
     } finally {
-      setIsLoading(false);
+      if (generation === loadGeneration.current) setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    setCurrentFolderId(folderIdParam);
-  }, [folderIdParam]);
-
-  useEffect(() => {
-    loadData();
-    window.addEventListener("refresh_files", loadData);
-    return () => window.removeEventListener("refresh_files", loadData);
   }, [currentFolderId, category, sortBy, sortOrder, currentPage, searchParam]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedFileIds([]);
+    setDetailsFile(null);
+  }, [folderIdParam, searchParam, category, sortBy, sortOrder]);
+
+  useEffect(() => {
+    void loadData();
+    const refresh = () => { void loadData(); };
+    window.addEventListener("refresh_files", refresh);
+    return () => { loadGeneration.current += 1; window.removeEventListener("refresh_files", refresh); };
+  }, [loadData]);
+
   const handleSelectFile = (fileId: string, e: React.MouseEvent) => {
-    if (e.metaKey || e.ctrlKey) {
+    if (e.metaKey || e.ctrlKey || (e.target instanceof HTMLInputElement && e.target.type === "checkbox")) {
       setSelectedFileIds((prev) =>
         prev.includes(fileId) ? prev.filter((id) => id !== fileId) : [...prev, fileId]
       );
@@ -131,7 +130,7 @@ function FilesContent() {
 
   const navigateToFolder = (id: string | null) => {
     setSelectedFileIds([]);
-    setCurrentFolderId(id);
+    setCurrentPage(1);
     if (id) {
       router.push(`/files?folder_id=${id}`);
     } else {
@@ -234,10 +233,11 @@ function FilesContent() {
                 <ArrowUpDown className="w-3 h-3 text-muted-foreground" />
                 <select
                   value={`${sortBy}_${sortOrder}`}
+                  aria-label="Sort files"
                   onChange={(e) => {
-                    const [sb, so] = e.target.value.split("_");
-                    setSortBy(sb);
-                    setSortOrder(so as any);
+                    const separator = e.target.value.lastIndexOf("_");
+                    setSortBy(e.target.value.slice(0, separator));
+                    setSortOrder(e.target.value.slice(separator + 1) === "asc" ? "asc" : "desc");
                   }}
                   className="bg-transparent text-foreground focus:outline-none text-xs"
                 >
@@ -290,6 +290,7 @@ function FilesContent() {
                     key={folder.id}
                     folder={folder}
                     onClick={() => navigateToFolder(folder.id)}
+                    onMove={() => setOrganize({ folder, action: "move" })}
                     onRefresh={loadData}
                   />
                 ))}
@@ -354,6 +355,9 @@ function FilesContent() {
                     onShare={() => setShareFile(file)}
                     onVersions={() => setVersionsFile(file)}
                     onDetails={() => setDetailsFile(file)}
+                    onRename={() => setOrganize({ file, action: "rename" })}
+                    onMove={() => setOrganize({ file, action: "move" })}
+                    onCopy={() => setOrganize({ file, action: "copy" })}
                     onRefresh={loadData}
                   />
                 ))}
@@ -382,7 +386,10 @@ function FilesContent() {
                         onPreview={() => setPreviewFile(file)}
                         onShare={() => setShareFile(file)}
                         onVersions={() => setVersionsFile(file)}
-                        onDetails={() => setDetailsFile(file)}
+                         onDetails={() => setDetailsFile(file)}
+                         onRename={() => setOrganize({ file, action: "rename" })}
+                         onMove={() => setOrganize({ file, action: "move" })}
+                         onCopy={() => setOrganize({ file, action: "copy" })}
                         onRefresh={loadData}
                       />
                     ))}
@@ -434,10 +441,12 @@ function FilesContent() {
       <BulkActionsToolbar
         selectedIds={selectedFileIds}
         onClearSelection={() => setSelectedFileIds([])}
+        onSelectionChange={setSelectedFileIds}
         onRefresh={loadData}
       />
 
       {/* Modals */}
+      <OrganizeFileModal file={organize?.file || null} folder={organize?.folder || null} action={organize?.action || null} onClose={() => setOrganize(null)} onComplete={loadData} />
       <UploadModal
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}

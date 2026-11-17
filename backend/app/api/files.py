@@ -1,10 +1,9 @@
 """File management API endpoints."""
 
-import io
 import uuid
-from typing import Annotated
-from fastapi import APIRouter, Depends, File as FastAPIFile, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -12,6 +11,7 @@ from app.models.user import User
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.file import (
     BulkActionRequest,
+    BulkActionResponse,
     FileCopyRequest,
     FileMoveRequest,
     FileResponse,
@@ -22,21 +22,12 @@ from app.schemas.file import (
     UploadInitiateRequest,
     UploadInitiateResponse,
 )
-from app.services.file_service import FileService
+from app.services.download_service import stored_response
+from app.services.file_service import FileService, validate_folder
+from app.services.upload_service import UploadService
 from app.storage import get_storage_provider
-from app.utils.file_utils import sanitize_filename, determine_mime_type
 
 router = APIRouter(prefix="/api/files", tags=["Files"])
-
-
-async def _read_stored_file(storage, storage_key: str) -> bytes:
-    try:
-        return await storage.get_file(storage_key)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="The stored file content is unavailable. Please upload the file again.",
-        ) from exc
 
 
 def _to_file_response(file) -> FileResponse:
@@ -53,11 +44,11 @@ def list_files(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
     folder_id: uuid.UUID | None = Query(None),
-    category: str | None = Query(None),
-    tag: str | None = Query(None),
-    search: str | None = Query(None),
-    sort_by: str = Query("created_at"),
-    sort_order: str = Query("desc"),
+    category: Literal["all", "document", "image", "video", "audio", "archive", "code"] | None = Query(None),
+    tag: str | None = Query(None, max_length=100),
+    search: str | None = Query(None, max_length=255),
+    sort_by: Literal["created_at", "updated_at", "original_filename", "size_bytes"] = Query("created_at"),
+    sort_order: Literal["asc", "desc"] = Query("desc"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ):
@@ -93,9 +84,10 @@ async def upload_file(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
     folder_id: uuid.UUID | None = Query(None),
+    idempotency_key: uuid.UUID | None = Header(None, alias="Idempotency-Key"),
 ):
     """Upload a file with size, type, and quota validation."""
-    uploaded = await FileService.upload_file(db, current_user, file, folder_id=folder_id)
+    uploaded = await FileService.upload_file(db, current_user, file, folder_id=folder_id, request_id=idempotency_key)
     return _to_file_response(uploaded)
 
 
@@ -103,62 +95,20 @@ async def upload_file(
 def initiate_upload(
     req: UploadInitiateRequest,
     current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Initiate an upload session for direct or presigned transfers."""
-    if current_user.storage_used_bytes + req.size_bytes > current_user.storage_quota_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Storage quota exceeded.",
-        )
-    storage = get_storage_provider()
-    upload_id = uuid.uuid4().hex
-    storage_key = f"users/{current_user.id}/temp/{upload_id}_{sanitize_filename(req.filename)}"
-    presigned_url = storage.generate_presigned_upload_url(storage_key)
-    return UploadInitiateResponse(
-        upload_id=upload_id,
-        storage_key=storage_key,
-        upload_url=presigned_url,
-    )
+    return UploadService.initiate(db, current_user, req)
 
 
 @router.post("/upload/complete", response_model=FileResponse)
-def complete_upload(
+async def complete_upload(
     req: UploadCompleteRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Finalize an upload initiated via presigned URL."""
-    # Build File and Version record after verifying uploaded size
-    clean_name = sanitize_filename(req.filename)
-    mime_type = determine_mime_type(clean_name, req.mime_type)
-    from app.models.file import File, FileVersion
-
-    file_rec = File(
-        owner_id=current_user.id,
-        folder_id=req.folder_id,
-        original_filename=clean_name,
-        storage_key=req.storage_key,
-        mime_type=mime_type,
-        size_bytes=req.size_bytes,
-        checksum=req.checksum,
-        current_version=1,
-    )
-    db.add(file_rec)
-    db.flush()
-
-    ver_rec = FileVersion(
-        file_id=file_rec.id,
-        version_number=1,
-        storage_key=req.storage_key,
-        size_bytes=req.size_bytes,
-        checksum=req.checksum,
-        uploaded_by=current_user.id,
-    )
-    db.add(ver_rec)
-    current_user.storage_used_bytes += req.size_bytes
-    db.commit()
-    db.refresh(file_rec)
-    return _to_file_response(file_rec)
+    return _to_file_response(await UploadService.complete(db, current_user, req))
 
 
 @router.get("/{file_id}", response_model=FileResponse)
@@ -180,14 +130,24 @@ def update_file(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Update file filename or starred state."""
-    file, _ = FileService.check_file_access(db, file_id, current_user.id)
+    file, permission = FileService.check_file_access(db, file_id, current_user.id)
+    if file.is_trashed:
+        raise HTTPException(status_code=409, detail="Restore this file before updating it.")
+    if req.is_starred is not None and permission != "owner":
+        raise HTTPException(status_code=403, detail="Only the owner can change favorites.")
+    if req.original_filename is not None and permission == "viewer":
+        raise HTTPException(status_code=403, detail="Viewers cannot rename files.")
+    if "folder_id" in req.model_fields_set:
+        if permission == "viewer":
+            raise HTTPException(status_code=403, detail="Viewers cannot move files.")
+        validate_folder(db, req.folder_id, file.owner_id)
     if req.original_filename:
         file = FileService.rename_file(db, file_id, current_user.id, req.original_filename)
     if req.is_starred is not None:
         file.is_starred = req.is_starred
         db.commit()
         db.refresh(file)
-    if req.folder_id is not None:
+    if "folder_id" in req.model_fields_set:
         file = FileService.move_file(db, file_id, current_user.id, FileMoveRequest(folder_id=req.folder_id))
     return _to_file_response(file)
 
@@ -209,24 +169,17 @@ async def download_file(
     file_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
-    direct: bool = Query(False, description="Stream content instead of returning a presigned object URL."),
+    direct: bool = Query(True, deprecated=True, description="Legacy option; all downloads now stream verified content."),
 ):
     """Download file contents securely."""
     file, _ = FileService.check_file_access(db, file_id, current_user.id)
+    if file.is_trashed:
+        raise HTTPException(status_code=409, detail="Restore this file before downloading it.")
     storage = get_storage_provider()
 
-    # Check for presigned S3 download URL
-    presigned = None if direct else storage.generate_presigned_download_url(file.storage_key, file.original_filename)
-    if presigned:
-        return {"download_url": presigned}
-
-    content_bytes = await _read_stored_file(storage, file.storage_key)
-    safe_name = file.original_filename.encode("ascii", "ignore").decode("ascii") or "download"
-    return StreamingResponse(
-        io.BytesIO(content_bytes),
-        media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
-    )
+    # A mutable presigned object can differ from any bytes checked here.
+    # Always serve the exact verified spool, including legacy direct=false requests.
+    return await stored_response(storage, file)
 
 
 @router.get("/{file_id}/preview")
@@ -237,13 +190,10 @@ async def preview_file(
 ):
     """Inline safe preview of file content for supported types."""
     file, _ = FileService.check_file_access(db, file_id, current_user.id)
+    if file.is_trashed:
+        raise HTTPException(status_code=409, detail="Restore this file before previewing it.")
     storage = get_storage_provider()
-    content_bytes = await _read_stored_file(storage, file.storage_key)
-    mime = file.mime_type or "text/plain"
-    # Ensure SVG or HTML is served safely to prevent XSS in application origin
-    if mime == "image/svg+xml" or mime == "text/html":
-        mime = "text/plain"
-    return StreamingResponse(io.BytesIO(content_bytes), media_type=mime)
+    return await stored_response(storage, file, preview=True)
 
 
 @router.post("/{file_id}/move", response_model=FileResponse)
@@ -287,21 +237,22 @@ def remove_favorite(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    file, _ = FileService.check_file_access(db, file_id, current_user.id)
+    file, permission = FileService.check_file_access(db, file_id, current_user.id)
+    if permission != "owner":
+        raise HTTPException(status_code=403, detail="Only the owner can change favorites.")
     file.is_starred = False
     db.commit()
     return MessageResponse(message="File unstarred.")
 
 
-@router.post("/bulk-action", response_model=MessageResponse)
+@router.post("/bulk-action", response_model=BulkActionResponse)
 async def bulk_action(
     req: BulkActionRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Execute bulk actions across multiple files."""
-    count = await FileService.execute_bulk_action(db, current_user, req)
-    return MessageResponse(message=f"Action '{req.action}' successfully performed on {count} files.")
+    return await FileService.execute_bulk_action(db, current_user, req)
 
 
 # --- Versioning endpoints ---
@@ -324,9 +275,10 @@ async def upload_new_version(
     file: UploadFile,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    idempotency_key: uuid.UUID | None = Header(None, alias="Idempotency-Key"),
 ):
     """Upload a new version of an existing file."""
-    version = await FileService.upload_new_version(db, file_id, current_user, file)
+    version = await FileService.upload_new_version(db, file_id, current_user, file, request_id=idempotency_key)
     return FileVersionResponse.model_validate(version)
 
 

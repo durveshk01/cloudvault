@@ -1,20 +1,20 @@
 """File sharing and ShareLink service."""
 
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, and_, or_, desc
-from fastapi import HTTPException, status
+from datetime import UTC, datetime
 
-from app.core.config import settings
+from fastapi import HTTPException, status
+from sqlalchemy import desc, or_, select, update
+from sqlalchemy.orm import Session, joinedload
+
 from app.core.security import hash_password, verify_password
 from app.models.file import File
-from app.models.user import User
 from app.models.share import FileShare, ShareLink
+from app.models.user import User
 from app.schemas.share import FileShareCreate, ShareLinkCreate
-from app.utils.hashing import generate_secure_token, hash_token
 from app.services.activity_service import ActivityService
 from app.services.notification_service import NotificationService
+from app.utils.hashing import generate_secure_token, hash_token
 
 
 class ShareService:
@@ -26,7 +26,7 @@ class ShareService:
         req: FileShareCreate,
     ) -> FileShare:
         file = db.scalar(select(File).where(File.id == file_id, File.owner_id == owner.id))
-        if not file:
+        if not file or file.is_trashed:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
 
         target_user = db.scalar(select(User).where(User.email == req.shared_with_email.lower()))
@@ -84,7 +84,7 @@ class ShareService:
     @staticmethod
     def get_file_shares(db: Session, file_id: uuid.UUID, user_id: uuid.UUID) -> list[FileShare]:
         file = db.scalar(select(File).where(File.id == file_id, File.owner_id == user_id))
-        if not file:
+        if not file or file.is_trashed:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found or not owner.")
 
         query = (
@@ -229,7 +229,8 @@ class ShareService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link is invalid or revoked.")
 
         # Check expiration
-        if link.expires_at and datetime.now(timezone.utc).replace(tzinfo=None) > link.expires_at.replace(tzinfo=None):
+        expiry = link.expires_at.replace(tzinfo=UTC) if link.expires_at and link.expires_at.tzinfo is None else link.expires_at
+        if expiry and datetime.now(UTC) > expiry:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="This share link has expired.")
 
         # Check download limit
@@ -237,9 +238,8 @@ class ShareService:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="Download limit for this link has been reached.")
 
         # Check password if configured and check is required
-        if require_password_check and link.password_hash:
-            if not password or not verify_password(password, link.password_hash):
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password for this link.")
+        if require_password_check and link.password_hash and (not password or not verify_password(password, link.password_hash)):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password for this link.")
 
         if not link.file or link.file.is_trashed:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The shared file is no longer available.")
@@ -248,7 +248,13 @@ class ShareService:
 
     @staticmethod
     def increment_download_count(db: Session, link_id: uuid.UUID) -> None:
-        link = db.scalar(select(ShareLink).where(ShareLink.id == link_id))
-        if link:
-            link.download_count += 1
-            db.commit()
+        now = datetime.now(UTC)
+        result = db.execute(update(ShareLink).where(
+            ShareLink.id == link_id, ShareLink.is_revoked.is_(False),
+            or_(ShareLink.max_downloads.is_(None), ShareLink.download_count < ShareLink.max_downloads),
+            or_(ShareLink.expires_at.is_(None), ShareLink.expires_at > now),
+        ).values(download_count=ShareLink.download_count + 1))
+        if result.rowcount != 1:
+            db.rollback()
+            raise HTTPException(status_code=410, detail="This share link expired or reached its download limit.")
+        db.commit()

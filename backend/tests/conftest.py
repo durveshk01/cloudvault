@@ -3,9 +3,10 @@
 import os
 import sys
 import tempfile
+
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -15,7 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.config import settings
 from app.core.database import Base, get_db
 from app.main import app
-from app.storage.local import LocalStorageProvider
 from app.storage import get_storage_provider
 
 # Use in-memory SQLite database for fast, isolated tests
@@ -29,11 +29,18 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+@event.listens_for(engine, "connect")
+def enable_foreign_keys(connection, _):
+    connection.execute("PRAGMA foreign_keys=ON")
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
     temp_dir = tempfile.TemporaryDirectory()
     settings.LOCAL_STORAGE_PATH = temp_dir.name
     settings.STORAGE_BACKEND = "local"
+    settings.RATE_LIMIT_ENABLED = False
+    settings.SEED_DEMO = False
     get_storage_provider.cache_clear()
     yield
     temp_dir.cleanup()
@@ -59,7 +66,7 @@ def client(db_session):
             pass
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    with TestClient(app, headers={"Origin": "http://localhost:3000"}) as test_client:
         yield test_client
     app.dependency_overrides.clear()
 

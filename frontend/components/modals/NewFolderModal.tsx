@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { FolderPlus, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { useDialog } from "@/lib/use-dialog";
 
 interface NewFolderModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export function NewFolderModal({
   const [name, setName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialog = useDialog(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -43,16 +45,17 @@ export function NewFolderModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden">
+      <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="new-folder-title" className="bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
               <FolderPlus className="w-4 h-4" />
             </div>
-            <h3 className="font-semibold text-sm text-foreground">Create New Folder</h3>
+            <h3 id="new-folder-title" className="font-semibold text-sm text-foreground">Create New Folder</h3>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close new folder dialog"
             className="p-1 rounded-lg text-muted-foreground hover:bg-accent"
           >
             <X className="w-4 h-4" />
@@ -61,12 +64,15 @@ export function NewFolderModal({
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1.5">
+            <label htmlFor="new-folder-name" className="block text-xs font-medium text-foreground mb-1.5">
               Folder Name
             </label>
             <input
               type="text"
-              autoFocus
+              id="new-folder-name"
+              data-autofocus
+              maxLength={255}
+              required
               placeholder="e.g. Invoices, Project Assets"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -74,7 +80,7 @@ export function NewFolderModal({
             />
           </div>
 
-          {error && <p className="text-xs text-red-600 dark:text-red-400 font-medium">{error}</p>}
+          {error && <p role="alert" className="text-xs text-red-600 dark:text-red-400 font-medium">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

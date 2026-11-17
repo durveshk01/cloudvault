@@ -91,6 +91,23 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
+    min-height: 100vh;
     min-height: 100dvh;
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 3px;
+  }
+}
+
+@media (pointer: coarse) {
+  button, a {
+    min-height: 40px;
+  }
+  button[aria-label] {
+    min-width: 40px;
+  }
+  input, select, textarea {
+    font-size: 16px !important;
   }
 }

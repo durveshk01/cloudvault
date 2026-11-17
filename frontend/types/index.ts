@@ -60,6 +60,18 @@ export interface FileVersion {
   created_at: string;
 }
 
+export interface Collaborator {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
+export interface BulkActionResult {
+  message: string;
+  processed_count: number;
+  failed: { id: string; message: string }[];
+}
+
 export interface FileShare {
   id: string;
   file_id: string;
@@ -68,8 +80,8 @@ export interface FileShare {
   permission: "viewer" | "editor";
   created_at: string;
   file?: FileItem;
-  sharer?: User;
-  recipient?: User;
+  sharer?: Collaborator;
+  recipient?: Collaborator;
 }
 
 export interface ShareLink {

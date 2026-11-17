@@ -1,7 +1,7 @@
 """Unit and integration tests for file management, uploads, quota, and trash."""
 
 import io
-import pytest
+
 from app.storage import get_storage_provider
 
 

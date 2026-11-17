@@ -16,11 +16,15 @@ import {
   History,
   Eye,
   MoreVertical,
+  Edit2,
+  FolderInput,
+  Copy,
 } from "lucide-react";
 import { FileItem } from "@/types";
 import { formatBytes, formatDate, getFileCategory } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
+import { isDeviceVault, isNative } from "@/lib/native";
 
 interface FileRowProps {
   file: FileItem;
@@ -31,6 +35,9 @@ interface FileRowProps {
   onVersions: () => void;
   onDetails: () => void;
   onRefresh: () => void;
+  onRename?: () => void;
+  onMove?: () => void;
+  onCopy?: () => void;
 }
 
 export function FileRow({
@@ -42,6 +49,9 @@ export function FileRow({
   onVersions,
   onDetails,
   onRefresh,
+  onRename,
+  onMove,
+  onCopy,
 }: FileRowProps) {
   const toast = useToast();
   const [showMenu, setShowMenu] = React.useState(false);
@@ -80,14 +90,14 @@ export function FileRow({
 
   const handleToggleStar = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.toggleStar(file.id);
-    onRefresh();
+    try { await api.toggleStar(file.id); onRefresh(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Favorite could not be updated."); }
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await api.deleteFile(file.id);
-    onRefresh();
+    try { await api.deleteFile(file.id); onRefresh(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "File could not be moved to trash."); }
   };
 
   return (
@@ -101,24 +111,28 @@ export function FileRow({
       }`}
     >
       {/* Star */}
-      <td className="py-3 px-3 w-8">
+      <td className="py-3 px-3">
+        <div className="flex items-center gap-1">
+        <input type="checkbox" aria-label={`Select ${file.original_filename}`} checked={isSelected} readOnly onClick={(event) => { event.stopPropagation(); onSelect(event); }} className="w-4 h-4 rounded accent-indigo-600" />
         <button
           onClick={handleToggleStar}
+          aria-label={`${file.is_starred ? "Unstar" : "Star"} ${file.original_filename}`}
           className={`p-1 rounded transition-colors ${
             file.is_starred ? "text-amber-500" : "text-muted-foreground/30 hover:text-amber-500"
           }`}
         >
           <Star className={`w-3.5 h-3.5 ${file.is_starred ? "fill-amber-500" : ""}`} />
         </button>
+        </div>
       </td>
 
       {/* Name with Icon */}
       <td className="py-3 px-3 max-w-[260px]">
         <div className="flex items-center gap-2.5">
           {getIcon()}
-          <span className="font-medium text-foreground truncate" title={file.original_filename}>
+          <button onClick={(event) => { event.stopPropagation(); onPreview(); }} className="font-medium text-left text-foreground truncate" title={file.original_filename}>
             {file.original_filename}
-          </span>
+          </button>
         </div>
       </td>
 
@@ -146,6 +160,8 @@ export function FileRow({
       <td className="py-3 px-3 text-right">
         <div className="relative inline-block" ref={menuRef}>
           <button
+            aria-label={`Actions for ${file.original_filename}`}
+            aria-expanded={showMenu}
             onClick={(e) => {
               e.stopPropagation();
               setShowMenu(!showMenu);
@@ -175,6 +191,7 @@ export function FileRow({
                   setShowMenu(false);
                   try {
                     await api.downloadFile(file.id, file.original_filename);
+                    if (isNative() && !isDeviceVault()) toast.info("Download queued. See Offline & transfers for progress.");
                   } catch (error) {
                     toast.error(error instanceof Error ? error.message : "The file could not be downloaded.");
                   }
@@ -218,6 +235,9 @@ export function FileRow({
                 File Details
               </button>
               <div className="border-t border-border my-1" />
+              {onRename && <button onClick={(event) => { event.stopPropagation(); setShowMenu(false); onRename(); }} className="w-full text-left px-3 py-1.5 hover:bg-accent flex items-center gap-2"><Edit2 className="w-3.5 h-3.5" />Rename</button>}
+              {onMove && <button onClick={(event) => { event.stopPropagation(); setShowMenu(false); onMove(); }} className="w-full text-left px-3 py-1.5 hover:bg-accent flex items-center gap-2"><FolderInput className="w-3.5 h-3.5" />Move</button>}
+              {onCopy && <button onClick={(event) => { event.stopPropagation(); setShowMenu(false); onCopy(); }} className="w-full text-left px-3 py-1.5 hover:bg-accent flex items-center gap-2"><Copy className="w-3.5 h-3.5" />Copy</button>}
               <button
                 onClick={handleDelete}
                 className="w-full text-left px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 flex items-center gap-2 font-medium"

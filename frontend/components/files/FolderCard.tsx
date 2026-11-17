@@ -1,21 +1,25 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Folder, MoreVertical, Edit2, Trash2, FolderOpen } from "lucide-react";
+import { Folder, MoreVertical, Edit2, Trash2, FolderInput } from "lucide-react";
 import { FolderItem } from "@/types";
 import { api } from "@/lib/api";
+import { useToast } from "@/lib/toast-context";
 
 interface FolderCardProps {
   folder: FolderItem;
   onClick: () => void;
   onRefresh: () => void;
+  onMove?: () => void;
 }
 
-export function FolderCard({ folder, onClick, onRefresh }: FolderCardProps) {
+export function FolderCard({ folder, onClick, onMove, onRefresh }: FolderCardProps) {
+  const toast = useToast();
   const [showMenu, setShowMenu] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [name, setName] = useState(folder.name);
   const menuRef = useRef<HTMLDivElement>(null);
+  const saving = useRef(false);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -33,16 +37,18 @@ export function FolderCard({ folder, onClick, onRefresh }: FolderCardProps) {
       setIsRenaming(false);
       return;
     }
-    await api.renameFolder(folder.id, name.trim());
-    setIsRenaming(false);
-    onRefresh();
+    if (saving.current) return;
+    saving.current = true;
+    try { await api.renameFolder(folder.id, name.trim()); setIsRenaming(false); onRefresh(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Folder could not be renamed."); }
+    finally { saving.current = false; }
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm(`Move folder "${folder.name}" and all its contents to trash?`)) {
-      await api.deleteFolder(folder.id);
-      onRefresh();
+      try { await api.deleteFolder(folder.id); onRefresh(); }
+      catch (error) { toast.error(error instanceof Error ? error.message : "Folder could not be moved to trash."); }
     }
   };
 
@@ -61,6 +67,8 @@ export function FolderCard({ folder, onClick, onRefresh }: FolderCardProps) {
             <form onSubmit={handleRenameSubmit} onClick={(e) => e.stopPropagation()}>
               <input
                 type="text"
+                aria-label={`Rename ${folder.name}`}
+                maxLength={255}
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -69,9 +77,9 @@ export function FolderCard({ folder, onClick, onRefresh }: FolderCardProps) {
               />
             </form>
           ) : (
-            <p className="text-xs font-semibold text-foreground truncate" title={folder.name}>
+            <button onClick={(event) => { event.stopPropagation(); onClick(); }} className="w-full text-left text-xs font-semibold text-foreground truncate" title={folder.name}>
               {folder.name}
-            </p>
+            </button>
           )}
 
           <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -83,8 +91,10 @@ export function FolderCard({ folder, onClick, onRefresh }: FolderCardProps) {
 
       <div className="relative" ref={menuRef} onClick={(e) => e.stopPropagation()}>
         <button
+          aria-label={`Actions for folder ${folder.name}`}
+          aria-expanded={showMenu}
           onClick={() => setShowMenu(!showMenu)}
-          className="p-1 rounded-lg text-muted-foreground/50 hover:text-foreground hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+          className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent"
         >
           <MoreVertical className="w-4 h-4" />
         </button>
@@ -102,6 +112,7 @@ export function FolderCard({ folder, onClick, onRefresh }: FolderCardProps) {
               Rename
             </button>
             <div className="border-t border-border my-1" />
+            {onMove && <button onClick={() => { setShowMenu(false); onMove(); }} className="w-full text-left px-3 py-1.5 hover:bg-accent flex items-center gap-2"><FolderInput className="w-3.5 h-3.5" />Move</button>}
             <button
               onClick={handleDelete}
               className="w-full text-left px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 flex items-center gap-2 font-medium"

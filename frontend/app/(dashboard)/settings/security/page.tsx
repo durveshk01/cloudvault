@@ -18,8 +18,12 @@ import {
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { api } from "@/lib/api";
+import { useToast } from "@/lib/toast-context";
+import { useRuntime } from "@/lib/runtime-context";
 
 export default function SecuritySettingsPage() {
+  const toast = useToast();
+  const { device } = useRuntime();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -62,6 +66,7 @@ export default function SecuritySettingsPage() {
         confirm_password: confirmPassword,
       });
       setSuccessMessage(res.message || "Password changed successfully!");
+      toast.success("Password updated. Sign in again with your new password.");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -133,11 +138,13 @@ export default function SecuritySettingsPage() {
 
             {/* Current Password */}
             <div>
-              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+              <label htmlFor="current-password" className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
                 Current Password
               </label>
               <div className="relative">
                 <input
+                  id="current-password"
+                  autoComplete="current-password"
                   type={showCurrent ? "text" : "password"}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
@@ -147,6 +154,7 @@ export default function SecuritySettingsPage() {
                 />
                 <button
                   type="button"
+                  aria-label={showCurrent ? "Hide current password" : "Show current password"}
                   onClick={() => setShowCurrent(!showCurrent)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
@@ -158,11 +166,14 @@ export default function SecuritySettingsPage() {
             {/* New Password */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
-                <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+                <label htmlFor="new-password" className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
                   New Password
                 </label>
                 <div className="relative">
                   <input
+                    id="new-password"
+                    autoComplete="new-password"
+                    maxLength={128}
                     type={showNew ? "text" : "password"}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -172,6 +183,7 @@ export default function SecuritySettingsPage() {
                   />
                   <button
                     type="button"
+                    aria-label={showNew ? "Hide new password" : "Show new password"}
                     onClick={() => setShowNew(!showNew)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
@@ -181,11 +193,14 @@ export default function SecuritySettingsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+                <label htmlFor="confirm-new-password" className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
                   Confirm New Password
                 </label>
                 <div className="relative">
                   <input
+                    id="confirm-new-password"
+                    autoComplete="new-password"
+                    maxLength={128}
                     type={showConfirm ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -195,6 +210,7 @@ export default function SecuritySettingsPage() {
                   />
                   <button
                     type="button"
+                    aria-label={showConfirm ? "Hide password confirmation" : "Show password confirmation"}
                     onClick={() => setShowConfirm(!showConfirm)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
@@ -254,10 +270,10 @@ export default function SecuritySettingsPage() {
             </div>
             <div>
               <h3 className="font-semibold text-sm text-foreground">
-                Argon2id Password Hashing
+                {device ? "On-device Password Protection" : "Argon2id Password Hashing"}
               </h3>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                CloudVault never stores plaintext passwords. Credentials are protected using state-of-the-art Argon2id cryptographic password hashing with memory and time-cost parameters.
+                {device ? "Passwords are verified on Android using salted PBKDF2-HMAC-SHA256 with 600,000 iterations. Account records and files are encrypted with Android Keystore protection." : "CloudVault never stores plaintext passwords. Credentials are protected using Argon2id cryptographic password hashing with memory and time-cost parameters."}
               </p>
             </div>
           </div>
@@ -271,7 +287,7 @@ export default function SecuritySettingsPage() {
                 SHA-256 File Integrity
               </h3>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Every file upload has an automatic cryptographic checksum calculated to guarantee non-repudiation and prevent data corruption during transit.
+                {device ? "Each imported revision is checked with SHA-256 before its encrypted content is committed. Authenticated encryption also detects modified content when you open it." : "Uploaded revisions have SHA-256 checksums. Android verifies these before saving a download for offline use, detecting incomplete or corrupted transfers."}
               </p>
             </div>
           </div>

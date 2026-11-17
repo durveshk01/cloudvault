@@ -2,6 +2,7 @@
 
 import uuid
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
@@ -28,9 +29,10 @@ def list_folders(
 ):
     """List folders in a parent folder (or root if parent_id is null)."""
     folders = FolderService.get_user_folders(db, current_user.id, parent_id=parent_id)
+    counts = FolderService.get_counts_for_folders(db, [folder.id for folder in folders], current_user.id)
     result = []
     for f in folders:
-        f_count, sf_count = FolderService.get_folder_counts(db, f.id, current_user.id)
+        f_count, sf_count = counts[f.id]
         resp = FolderResponse.model_validate(f)
         resp.file_count = f_count
         resp.subfolder_count = sf_count

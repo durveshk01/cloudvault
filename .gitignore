@@ -80,9 +80,26 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Android build artifacts
+android-app/app/src/main/assets/
+android-app/capacitor-cordova-android-plugins/
+android-app/capacitor.settings.gradle
+android-app/app/capacitor.build.gradle
+android-app/local.properties
+*.jks
+*.keystore
+*.p12
+.release-secrets/
+.env.signing.local
+.next-android/
+.ruff_cache/
+playwright-report/
+test-results/
+*.tsbuildinfo
+artifacts/
 *.apk
 *.aab
 .gradle/
+.kotlin/
 android-app/**/build/
 
 # IDE and OS

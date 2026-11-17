@@ -1,8 +1,9 @@
 """Notification service."""
 
 import uuid
+
+from sqlalchemy import desc, select, update
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc, update
 
 from app.models.notification import Notification
 
@@ -46,7 +47,7 @@ class NotificationService:
         return list(db.scalars(query).all())
 
     @staticmethod
-    def mark_as_read(db: Session, notification_id: uuid.UUID, user_id: uuid.UUID) -> Notification | None:
+    def mark_as_read(db: Session, notification_id: uuid.UUID, user_id: uuid.UUID, is_read: bool = True) -> Notification | None:
         notification = db.scalar(
             select(Notification).where(
                 Notification.id == notification_id,
@@ -55,7 +56,7 @@ class NotificationService:
         )
         if not notification:
             return None
-        notification.is_read = True
+        notification.is_read = is_read
         db.commit()
         db.refresh(notification)
         return notification

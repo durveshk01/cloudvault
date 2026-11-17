@@ -1,15 +1,19 @@
 """API dependencies for database sessions and authentication."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
+
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import decode_token
+from app.models.session import AuthSession
 from app.models.user import User
+from app.services.auth_service import session_id
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -25,8 +29,6 @@ def get_current_user(
         token = token_cred.credentials
     elif "access_token" in request.cookies:
         token = request.cookies.get("access_token")
-    elif "token" in request.query_params:
-        token = request.query_params.get("token")
 
     if not token:
         raise HTTPException(
@@ -36,7 +38,8 @@ def get_current_user(
         )
 
     payload = decode_token(token)
-    if not payload or payload.get("type") != "access":
+    sid = session_id(payload)
+    if not payload or payload.get("type") != "access" or not sid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired authentication token.",
@@ -46,13 +49,18 @@ def get_current_user(
     user_id_str = payload.get("sub")
     try:
         user_id = uuid.UUID(user_id_str)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, AttributeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token payload.",
-        )
+        ) from None
 
-    user = db.scalar(select(User).where(User.id == user_id))
+    user = db.scalar(select(User).join(AuthSession, AuthSession.user_id == User.id).where(
+        User.id == user_id,
+        AuthSession.id == sid,
+        AuthSession.revoked_at.is_(None),
+        AuthSession.expires_at > datetime.now(UTC),
+    ))
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

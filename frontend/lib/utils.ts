@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+// The package's default ESM bundle retains syntax unsupported by older WebViews.
+import { twMerge } from "tailwind-merge/es5";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

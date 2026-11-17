@@ -18,10 +18,26 @@ services:
         generateValue: true
       - key: COOKIE_SECURE
         value: "true"
+      - key: ENVIRONMENT
+        value: production
+      - key: FRONTEND_URL
+        value: https://cloudvault-frontend-tnwe.onrender.com
+      - key: BACKEND_URL
+        value: https://cloudvault-backend-wg5r.onrender.com
       - key: STORAGE_BACKEND
-        value: local
-      - key: LOCAL_STORAGE_PATH
-        value: /tmp/storage_data
+        value: s3
+      # Supply credentials for an existing private S3/R2/MinIO bucket.
+      # Never store production uploads on a free service's ephemeral /tmp disk.
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
       - key: CORS_ORIGINS
         value: https://cloudvault-frontend-tnwe.onrender.com
 
@@ -41,7 +57,7 @@ services:
       - key: INTERNAL_BACKEND_URL
         value: https://cloudvault-backend-wg5r.onrender.com
       - key: NEXT_PUBLIC_API_URL
-        value: https://cloudvault-backend-wg5r.onrender.com
+        value: ""
 
 databases:
   - name: cloudvault-db

@@ -1,6 +1,7 @@
 """Unit and integration tests for file sharing and public share links."""
 
 import io
+
 import pytest
 
 
@@ -95,6 +96,25 @@ def test_password_protected_share_link(client, auth_headers):
     assert fail_dl.status_code == 401
 
     # Try download with correct password -> succeeds
-    succ_dl = client.get(f"/api/public/shares/{token}/download?password=SecretPassword123")
+    succ_dl = client.get(f"/api/public/shares/{token}/download", headers={"X-Share-Password": "SecretPassword123"})
     assert succ_dl.status_code == 200
     assert succ_dl.content == b"Secret Code 999"
+
+
+@pytest.mark.parametrize("password", [" leading and trailing ", "pässword🔒", "only spaces  "])
+def test_public_post_preview_and_download_preserve_password(client, auth_headers, password):
+    content = b"Password protected content"
+    uploaded = client.post("/api/files/upload", headers=auth_headers,
+                           files={"file": ("protected.txt", io.BytesIO(content), "text/plain")}).json()
+    created = client.post(f"/api/files/{uploaded['id']}/share-links", headers=auth_headers,
+                          json={"permission": "download", "password": password, "max_downloads": 1})
+    assert created.status_code == 201
+    path = f"/api/public/shares/{created.json()['token']}"
+    client.cookies.clear()
+    assert client.post(f"{path}/preview", json={"password": "incorrect"}).status_code == 401
+    preview = client.post(f"{path}/preview", json={"password": password})
+    assert preview.status_code == 200 and preview.content == content
+    assert client.get(path).json()["downloads_remaining"] == 1
+    downloaded = client.post(f"{path}/download", json={"password": password})
+    assert downloaded.status_code == 200 and downloaded.content == content
+    assert client.post(f"{path}/download", json={"password": password}).status_code == 410

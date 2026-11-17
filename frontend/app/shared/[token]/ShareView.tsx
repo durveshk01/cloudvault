@@ -1,8 +1,8 @@
 ﻿"use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   Shield,
   Download,
@@ -22,10 +22,17 @@ import {
 import { api } from "@/lib/api";
 import { PublicShareInfo } from "@/types";
 import { formatBytes } from "@/lib/utils";
+import { PreviewContent } from "@/components/files/PreviewContent";
+import type { Preview } from "@/lib/use-preview";
+import { useRuntime } from "@/lib/runtime-context";
 
 export default function PublicSharePage() {
   const params = useParams();
-  const token = params?.token as string;
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token") || (typeof params?.token === "string" ? params.token : "");
+  const { native } = useRuntime();
+  const activeToken = useRef(token);
+  activeToken.current = token;
 
   const [shareInfo, setShareInfo] = useState<PublicShareInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -39,40 +46,66 @@ export default function PublicSharePage() {
 
   // Preview state
   const [showPreview, setShowPreview] = useState(false);
+  const [preview, setPreview] = useState<Preview>({ url: null, mime: "", text: null, loading: false, error: null });
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) return;
-
+    let current = true;
+    setShareInfo(null); setError(null); setIsUnlocked(false); setPassword(""); setPasswordError(null); setShowPreview(false); setDownloadError(null); setIsVerifying(false); setDownloading(false);
+    if (!token) { setError("Open a valid CloudVault share link."); setIsLoading(false); return; }
     setIsLoading(true);
     api.getPublicShareInfo(token)
       .then((info) => {
+        if (!current) return;
         setShareInfo(info);
         if (!info.requires_password) {
           setIsUnlocked(true);
         }
       })
       .catch((err) => {
+        if (!current) return;
         setError(err.message || "This shared link is invalid, expired, or has reached its download limit.");
       })
       .finally(() => {
-        setIsLoading(false);
+        if (current) setIsLoading(false);
       });
+    return () => { current = false; };
   }, [token]);
+
+  useEffect(() => {
+    if (!showPreview || !isUnlocked) return;
+    if ((shareInfo?.file_size || 0) > 12 * 1024 * 1024) {
+      setPreview({ url: null, mime: "", text: null, loading: false, error: "Preview is limited to 12 MB. Download the file to open it locally." }); return;
+    }
+    let current = true;
+    let url: string | null = null;
+    const controller = new AbortController();
+    setPreview({ url: null, mime: "", text: null, loading: true, error: null });
+    void api.getPublicPreviewBlob(token, password, controller.signal).then(async (blob) => {
+      const mime = blob.type.split(";")[0];
+      const text = mime.startsWith("text/") || mime.includes("json") ? await blob.slice(0, 1024 * 1024).text() : null;
+      if (!current) return;
+      url = URL.createObjectURL(blob);
+      setPreview({ url, mime, text, loading: false, error: null });
+    }).catch((error) => { if (current) setPreview({ url: null, mime: "", text: null, loading: false, error: error.message || "Preview unavailable." }); });
+    return () => { current = false; controller.abort(); if (url) URL.revokeObjectURL(url); };
+  }, [showPreview, isUnlocked, token, password, shareInfo?.file_size]);
 
   const handleVerifyPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password.trim()) return;
+    if (!password) return;
 
     setIsVerifying(true);
     setPasswordError(null);
 
     try {
-      await api.verifyPublicLinkPassword(token, password.trim());
-      setIsUnlocked(true);
+      await api.verifyPublicLinkPassword(token, password);
+      if (token === activeToken.current) setIsUnlocked(true);
     } catch (err: any) {
-      setPasswordError(err.message || "Incorrect password. Please try again.");
+      if (token === activeToken.current) setPasswordError(err.message || "Incorrect password. Please try again.");
     } finally {
-      setIsVerifying(false);
+      if (token === activeToken.current) setIsVerifying(false);
     }
   };
 
@@ -98,8 +131,15 @@ export default function PublicSharePage() {
     return <File className="w-10 h-10 text-indigo-500" />;
   };
 
-  const downloadUrl = isUnlocked ? api.getPublicDownloadUrl(token, password) : "";
-  const previewUrl = isUnlocked ? api.getPublicPreviewUrl(token, password) : "";
+  const download = async () => {
+    if (!shareInfo) return;
+    setDownloading(true); setDownloadError(null);
+    try {
+       const saved = await api.downloadPublicFile(token, shareInfo.filename, password || undefined);
+       if (saved && token === activeToken.current) setShareInfo((info) => info && { ...info, downloads_remaining: info.downloads_remaining === null ? null : Math.max(0, info.downloads_remaining - 1) });
+    } catch (error) { if (token === activeToken.current) setDownloadError(error instanceof Error ? error.message : "Download failed."); }
+    finally { if (token === activeToken.current) setDownloading(false); }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col justify-between">
@@ -178,23 +218,25 @@ export default function PublicSharePage() {
                 )}
 
                 <div>
-                  <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+                  <label htmlFor="share-password" className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
                     Enter Password
                   </label>
                   <input
-                    type="password"
+                    id="share-password"
+                     type="password"
+                     disabled={isVerifying}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter link password..."
                     className="w-full px-4 py-2.5 text-sm rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
                     required
-                    autoFocus
+                    maxLength={100}
                   />
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isVerifying || !password.trim()}
+                   disabled={isVerifying || !password}
                   className="w-full py-2.5 rounded-xl bg-indigo-600 text-white font-medium text-sm hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 disabled:opacity-50"
                 >
                   {isVerifying ? "Verifying..." : "Unlock File"}
@@ -220,7 +262,7 @@ export default function PublicSharePage() {
                     <span className="text-xs text-muted-foreground font-medium">
                       {formatBytes(shareInfo.file_size)}
                     </span>
-                    <span className="text-muted-foreground">ΓÇó</span>
+                    <span className="text-muted-foreground">·</span>
                     <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground uppercase">
                       {shareInfo.permission === "view" ? "View Only" : "Download Allowed"}
                     </span>
@@ -235,40 +277,22 @@ export default function PublicSharePage() {
 
               {/* Inline Preview (if toggled) */}
               {showPreview && (
-                <div className="rounded-xl border border-border overflow-hidden bg-background">
-                  {shareInfo.mime_type?.startsWith("image/") ? (
-                    <img
-                      src={previewUrl}
-                      alt={shareInfo.filename}
-                      className="w-full max-h-96 object-contain bg-black/5"
-                    />
-                  ) : shareInfo.mime_type === "application/pdf" ? (
-                    <iframe
-                      src={previewUrl}
-                      title={shareInfo.filename}
-                      className="w-full h-96 border-0"
-                    />
-                  ) : (
-                    <iframe
-                      src={previewUrl}
-                      title={shareInfo.filename}
-                      className="w-full h-80 border-0 p-4 font-mono text-xs bg-muted/30"
-                    />
-                  )}
-                </div>
+                  <div className="rounded-xl border border-border overflow-hidden bg-background min-h-48 max-h-96 flex items-center justify-center">
+                    <PreviewContent preview={preview} filename={shareInfo.filename} />
+                  </div>
               )}
 
               {/* Actions */}
               <div className="flex flex-col sm:flex-row gap-3">
                 {shareInfo.permission !== "view" && (
-                  <a
-                    href={downloadUrl}
-                    download={shareInfo.filename}
+                  <button
+                    onClick={download}
+                    disabled={downloading || shareInfo.downloads_remaining === 0}
                     className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 text-white font-medium text-sm hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20"
                   >
                     <Download className="w-4 h-4" />
-                    Download File
-                  </a>
+                    {downloading ? "Downloading…" : native ? "Save to device" : "Download File"}
+                  </button>
                 )}
 
                 {shareInfo.preview_supported && (
@@ -281,12 +305,14 @@ export default function PublicSharePage() {
                   </button>
                 )}
               </div>
+              {downloadError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{downloadError}</p>}
+              {!native && token && <a href={`cloudvault://shared/${encodeURIComponent(token)}`} className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 py-2"><ExternalLink className="w-3.5 h-3.5" />Open in installed CloudVault Android app</a>}
 
               {/* Security Banner */}
               <div className="p-4 rounded-xl bg-muted/30 border border-border/60 flex items-start gap-3 text-xs text-muted-foreground">
                 <Shield className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
                 <span>
-                  Delivered securely via CloudVault encrypted storage. Links expire automatically according to sender policies.
+                  Access is checked before every preview and download. Links follow the owner&apos;s password, expiry, and download-limit settings.
                 </span>
               </div>
             </div>
@@ -296,7 +322,7 @@ export default function PublicSharePage() {
 
       {/* Footer */}
       <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
-        <p>┬⌐ {new Date().getFullYear()} CloudVault ΓÇö Cloud File Storage & Secure Sharing Platform. Built with Next.js & FastAPI.</p>
+        <p>© {new Date().getFullYear()} CloudVault — Cloud File Storage &amp; Secure Sharing Platform.</p>
       </footer>
     </div>
   );

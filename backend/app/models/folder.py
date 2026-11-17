@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -13,6 +13,7 @@ class Folder(Base):
     """Represents a folder in the CloudVault file system hierarchy."""
 
     __tablename__ = "folders"
+    __table_args__ = (Index("ix_folders_owner_parent_trash", "owner_id", "parent_id", "is_trashed"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
@@ -23,13 +24,14 @@ class Folder(Base):
     )
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("folders.id", ondelete="CASCADE"),
-        nullable=True,
+        nullable=True, index=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_trashed: Mapped[bool] = mapped_column(Boolean, default=False)
     trashed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    trash_batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

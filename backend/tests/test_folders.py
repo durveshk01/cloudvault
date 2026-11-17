@@ -1,9 +1,5 @@
 """Unit and integration tests for folder operations and hierarchy."""
 
-import io
-import pytest
-
-
 def test_create_and_list_folders(client, auth_headers):
     res = client.post(
         "/api/folders",

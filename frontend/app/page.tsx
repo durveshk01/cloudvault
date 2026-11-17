@@ -18,9 +18,17 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useRuntime } from "@/lib/runtime-context";
+import { useRouter } from "next/navigation";
 
 export default function LandingPage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+  const { native } = useRuntime();
+  const router = useRouter();
+  React.useEffect(() => {
+    if (native && !isLoading) router.replace(user ? "/dashboard" : "/login");
+  }, [native, user, isLoading, router]);
+  if (native) return <main className="min-h-screen flex items-center justify-center bg-background"><p role="status" className="text-sm text-muted-foreground">Opening CloudVault…</p></main>;
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-indigo-500 selection:text-white">

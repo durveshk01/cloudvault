@@ -1,0 +1,9 @@
+target-version = "py312"
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "BLE", "SIM", "PIE", "RUF"]
+
+[lint.flake8-bugbear]
+# These are FastAPI's declarative parameter/dependency descriptors, not mutable
+# application defaults. Keep ordinary default-expression checks enabled.
+extend-immutable-calls = ["fastapi.Body", "fastapi.Depends", "fastapi.File", "fastapi.Header", "fastapi.Query"]

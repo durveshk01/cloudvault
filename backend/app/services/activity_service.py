@@ -2,8 +2,9 @@
 
 import uuid
 from typing import Any
+
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc
 
 from app.models.activity import ActivityLog
 
@@ -18,6 +19,7 @@ class ActivityService:
         resource_id: uuid.UUID | None = None,
         resource_name: str | None = None,
         details: dict[str, Any] | None = None,
+        commit: bool = True,
     ) -> ActivityLog:
         """Record an activity event for a user."""
         log = ActivityLog(
@@ -29,8 +31,9 @@ class ActivityService:
             details=details,
         )
         db.add(log)
-        db.commit()
-        db.refresh(log)
+        if commit:
+            db.commit()
+            db.refresh(log)
         return log
 
     @staticmethod

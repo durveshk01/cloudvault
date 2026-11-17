@@ -1,7 +1,8 @@
 """Authentication API endpoints."""
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, Response, status
+
+from fastapi import APIRouter, Body, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -19,6 +20,21 @@ from app.schemas.user import UserResponse, UserUpdate
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api", tags=["Authentication"])
+
+
+def set_session_cookies(response: Response, tokens: TokenResponse) -> None:
+    response.headers["Cache-Control"] = "no-store"
+    for key, value, age in (
+        ("access_token", tokens.access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60),
+        ("refresh_token", tokens.refresh_token, settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400),
+    ):
+        response.set_cookie(key, value, httponly=True, samesite=settings.COOKIE_SAMESITE, secure=settings.COOKIE_SECURE, max_age=age)
+
+
+def clear_session_cookies(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
+    for key in ("access_token", "refresh_token"):
+        response.delete_cookie(key, httponly=True, samesite=settings.COOKIE_SAMESITE, secure=settings.COOKIE_SECURE)
 
 
 @router.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -39,50 +55,31 @@ def login(
 ):
     """Authenticate with email and password."""
     tokens = AuthService.login(db, req)
-    # Set secure HttpOnly cookies as well as returning tokens
-    response.set_cookie(
-        key="access_token",
-        value=tokens.access_token,
-        httponly=True,
-        samesite="lax",
-        secure=settings.COOKIE_SECURE,
-        max_age=30 * 60,
-    )
-    response.set_cookie(
-        key="refresh_token",
-        value=tokens.refresh_token,
-        httponly=True,
-        samesite="lax",
-        secure=settings.COOKIE_SECURE,
-        max_age=7 * 24 * 3600,
-    )
+    set_session_cookies(response, tokens)
     return tokens
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)
 def refresh_token(
-    req: RefreshTokenRequest,
+    request: Request,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
+    req: RefreshTokenRequest | None = Body(None),
 ):
     """Exchange refresh token for a new access token."""
-    tokens = AuthService.refresh_access_token(db, req.refresh_token)
-    response.set_cookie(
-        key="access_token",
-        value=tokens.access_token,
-        httponly=True,
-        samesite="lax",
-        secure=settings.COOKIE_SECURE,
-        max_age=30 * 60,
-    )
+    refresh = req.refresh_token if req and req.refresh_token else request.cookies.get("refresh_token")
+    tokens = AuthService.refresh_access_token(db, refresh)
+    set_session_cookies(response, tokens)
     return tokens
 
 
 @router.post("/auth/logout", response_model=MessageResponse)
-def logout(response: Response):
-    """Clear session cookies on logout."""
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+def logout(request: Request, response: Response, db: Annotated[Session, Depends(get_db)], req: RefreshTokenRequest | None = Body(None)):
+    """Revoke the server-side session and clear HttpOnly cookies."""
+    authorization = request.headers.get("Authorization", "")
+    bearer = authorization[7:] if authorization.lower().startswith("bearer ") else None
+    AuthService.logout(db, req.refresh_token if req and req.refresh_token else request.cookies.get("refresh_token") or bearer or request.cookies.get("access_token"))
+    clear_session_cookies(response)
     return MessageResponse(message="Successfully logged out.")
 
 
@@ -110,7 +107,9 @@ def change_password(
     req: ChangePasswordRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    response: Response,
 ):
     """Change account password."""
     AuthService.change_password(db, current_user, req)
-    return MessageResponse(message="Password successfully changed.")
+    clear_session_cookies(response)
+    return MessageResponse(message="Password changed. Please sign in again on your devices.")

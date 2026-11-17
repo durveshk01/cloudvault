@@ -1,6 +1,5 @@
 """Unit and integration tests for authentication workflows."""
 
-import pytest
 from app.core.config import settings
 
 

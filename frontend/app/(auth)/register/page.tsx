@@ -4,9 +4,11 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Shield, Lock, Mail, User, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useRuntime } from "@/lib/runtime-context";
 
 export default function RegisterPage() {
   const { register } = useAuth();
+  const { device } = useRuntime();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -59,7 +61,7 @@ export default function RegisterPage() {
           </Link>
           <h2 className="text-xl font-bold text-foreground">Create your account</h2>
           <p className="text-xs text-muted-foreground">
-            Get 1 GB of free secure cloud storage instantly
+            {device ? "Create a private account and 1 GB vault on this phone. Your email is a local sign-in identifier." : "Get 1 GB of free secure cloud storage instantly"}
           </p>
         </div>
 
@@ -82,6 +84,8 @@ export default function RegisterPage() {
                 <input
                   id="register-name"
                   autoComplete="name"
+                  minLength={2}
+                  maxLength={100}
                   type="text"
                   required
                   placeholder="Alex Taylor"
@@ -101,6 +105,7 @@ export default function RegisterPage() {
                 <input
                   id="register-email"
                   autoComplete="email"
+                  maxLength={254}
                   type="email"
                   required
                   placeholder="alex@example.com"
@@ -120,6 +125,7 @@ export default function RegisterPage() {
                 <input
                   id="register-password"
                   autoComplete="new-password"
+                  maxLength={128}
                   type="password"
                   required
                   placeholder="••••••••"
@@ -157,6 +163,7 @@ export default function RegisterPage() {
                 <input
                   id="register-confirm-password"
                   autoComplete="new-password"
+                  maxLength={128}
                   type="password"
                   required
                   placeholder="••••••••"

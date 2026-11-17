@@ -3,7 +3,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -26,11 +35,11 @@ class FileShare(Base):
     )
     shared_by: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=False, index=True,
     )
     shared_with: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=False, index=True,
     )
     permission: Mapped[str] = mapped_column(
         String(20), default="viewer", nullable=False
@@ -64,7 +73,7 @@ class ShareLink(Base):
     )
     file_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("files.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=False, index=True,
     )
     token_hash: Mapped[str] = mapped_column(
         String(128), unique=True, index=True, nullable=False
@@ -83,7 +92,7 @@ class ShareLink(Base):
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=False, index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -6,6 +6,7 @@ on:
     paths:
       - 'android-app/**'
       - 'frontend/**'
+      - 'scripts/android-release.py'
       - '.github/workflows/android-release.yml'
   workflow_dispatch:
   release:
@@ -27,7 +28,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -35,6 +36,8 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm run lint
+          npm run test:unit
           node scripts/build-android.mjs
 
       - name: Set up Java
@@ -46,7 +49,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '9.3.1'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -54,10 +57,11 @@ jobs:
           packages: platform-tools
 
       - name: Install Android build platform
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
 
       - name: Build installable debug APK
-        run: gradle -p android-app assembleDebug
+        if: github.event_name != 'release'
+        run: gradle -p android-app --console=plain :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 
       - name: Upload APK build artifact
         if: github.event_name != 'release'
@@ -67,12 +71,33 @@ jobs:
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Prepare release APK filename
+      - name: Restore private release signing key
         if: github.event_name == 'release'
-        run: cp android-app/app/build/outputs/apk/debug/app-debug.apk "CloudVault-${{ github.event.release.tag_name }}.apk"
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Release signing secrets are required; refusing a debug-key release."; exit 1; }
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/cloudvault-release.p12"
+          chmod 600 "$RUNNER_TEMP/cloudvault-release.p12"
+
+      - name: Build and verify signed release APK
+        if: github.event_name == 'release'
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/cloudvault-release.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: python scripts/android-release.py --skip-frontend --gradle gradle --sdk "$ANDROID_HOME"
 
       - name: Attach APK to GitHub release
         uses: softprops/action-gh-release@v2
         if: github.event_name == 'release'
         with:
-          files: CloudVault-${{ github.event.release.tag_name }}.apk
+          files: |
+            artifacts/CloudVault-*.apk
+            artifacts/CloudVault-*.apk.sha256
+            artifacts/android-release.json
+
+      - name: Remove temporary release signing key
+        if: always() && github.event_name == 'release'
+        run: rm -f "$RUNNER_TEMP/cloudvault-release.p12"

@@ -23,7 +23,7 @@ class Tag(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=False, index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -58,7 +58,7 @@ class FileTag(Base):
     )
     tag_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("tags.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=False, index=True,
     )
 
     # Relationships

@@ -1,6 +1,7 @@
 """Authentication schemas."""
 
 import re
+
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
@@ -8,7 +9,12 @@ class RegisterRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
-    confirm_password: str
+    confirm_password: str = Field(..., max_length=128)
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("password")
     @classmethod
@@ -32,23 +38,24 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=1, max_length=128)
 
 
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    expires_in: int = 1800
 
 
 class RefreshTokenRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str | None = Field(None, max_length=2048)
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str
+    current_password: str = Field(..., min_length=1, max_length=128)
     new_password: str = Field(..., min_length=8, max_length=128)
-    confirm_password: str
+    confirm_password: str = Field(..., max_length=128)
 
     @field_validator("new_password")
     @classmethod

@@ -3,7 +3,7 @@
 import time
 from collections import defaultdict
 from threading import Lock
-from typing import Dict, List, Tuple
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse
 from app.core.config import settings
 
 
-def parse_rate_limit(limit_str: str) -> Tuple[int, int]:
+def parse_rate_limit(limit_str: str) -> tuple[int, int]:
     """Parse '10/minute', '30/minute', '120/second', etc. into (max_requests, window_seconds)."""
     try:
         count_str, period = limit_str.strip().split("/")
@@ -28,7 +28,7 @@ def parse_rate_limit(limit_str: str) -> Tuple[int, int]:
         else:
             seconds = 60
         return count, seconds
-    except Exception:
+    except (AttributeError, ValueError):
         return 120, 60
 
 
@@ -37,13 +37,21 @@ class SlidingWindowRateLimiter:
 
     def __init__(self):
         self._lock = Lock()
-        self._history: Dict[str, List[float]] = defaultdict(list)
+        self._history: dict[str, list[float]] = defaultdict(list)
+        self._expiry: dict[str, float] = {}
+        self._next_cleanup = 0.0
 
-    def is_allowed(self, key: str, max_requests: int, window_seconds: int) -> Tuple[bool, int]:
+    def is_allowed(self, key: str, max_requests: int, window_seconds: int) -> tuple[bool, int]:
         """Returns (is_allowed, retry_after_seconds)."""
-        now = time.time()
+        now = time.monotonic()
         cutoff = now - window_seconds
         with self._lock:
+            if now >= self._next_cleanup:
+                for expired_key in [k for k, expiry in self._expiry.items() if expiry <= now]:
+                    self._history.pop(expired_key, None)
+                    self._expiry.pop(expired_key, None)
+                self._next_cleanup = now + 60
+            self._expiry[key] = now + window_seconds
             timestamps = self._history[key]
             valid = [ts for ts in timestamps if ts > cutoff]
             if len(valid) >= max_requests:
@@ -58,6 +66,7 @@ class SlidingWindowRateLimiter:
         """Reset all rate limit counters (useful for test isolation)."""
         with self._lock:
             self._history.clear()
+            self._expiry.clear()
 
 
 limiter = SlidingWindowRateLimiter()
@@ -71,13 +80,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.enabled = enabled
 
     async def dispatch(self, request: Request, call_next):
-        if not self.enabled or request.method == "OPTIONS":
+        if not self.enabled or not settings.RATE_LIMIT_ENABLED or request.method == "OPTIONS":
             return await call_next(request)
 
         path = request.url.path
 
         # Determine rate limit bucket
-        if path.startswith("/api/auth/login") or path.startswith("/api/auth/register"):
+        if path.startswith(("/api/auth/", "/api/public/shares/")) and (path.endswith(("/login", "/register", "/verify", "/refresh", "/change-password"))):
             max_req, window = parse_rate_limit(settings.RATE_LIMIT_AUTH)
             bucket = "auth"
         elif path.startswith("/api/files/upload"):
@@ -90,16 +99,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # Health, docs, openapi, static routes not rate-limited
             return await call_next(request)
 
-        forwarded = request.headers.get("x-forwarded-for")
-        client_ip = (
-            forwarded.split(",")[0].strip()
-            if forwarded
-            else (request.client.host if request.client else "unknown")
-        )
-
-        # In testing environments, bypass rate limiting for testclient unless explicitly testing rate limits
-        if client_ip == "testclient" and not request.headers.get("x-test-rate-limit"):
-            return await call_next(request)
+        # Uvicorn normalizes trusted proxy headers; never trust an arbitrary forwarded header here.
+        client_ip = request.client.host if request.client else "unknown"
 
         rate_key = f"{bucket}:{client_ip}"
 

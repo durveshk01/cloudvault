@@ -1,16 +1,16 @@
-from logging.config import fileConfig
 import os
 import sys
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from logging.config import fileConfig
+
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # Add backend directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import app.models  # noqa: F401 - load all models for metadata discovery
 from app.core.config import settings
-from app.core.database import Base
-import app.models  # Load all models for metadata discovery
+from app.core.database import Base, normalize_database_url
 
 config = context.config
 
@@ -20,7 +20,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def get_url():
-    return settings.DATABASE_URL
+    return normalize_database_url(settings.DATABASE_URL)
 
 def run_migrations_offline() -> None:
     url = get_url()

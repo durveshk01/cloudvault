@@ -1,6 +1,7 @@
 import {
   ActivityLog,
   BreadcrumbItem,
+  BulkActionResult,
   DashboardStats,
   FileItem,
   FileShare,
@@ -14,66 +15,163 @@ import {
   Tag,
   User,
 } from "@/types";
+import { blobFromBase64, isDeviceVault, isNative, nativeVault } from "@/lib/native";
+import { readFileResponse, saveBrowserBlob, validateFileBlob } from "@/lib/file-transfer";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+function errorMessage(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object") return fallback;
+  const detail = (data as { detail?: unknown; message?: unknown }).detail ?? (data as { message?: unknown }).message;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map((item) => item.msg || "Invalid input").join("; ");
+  return fallback;
+}
+
+export interface UploadOptions {
+  signal?: AbortSignal;
+  onProgress?: (percent: number) => void;
+  requestId?: string;
+}
+
 class ApiClient {
   private token: string | null = null;
+  private expiresAt = 0;
+  private refreshPromise: Promise<void> | null = null;
+  private logoutPromise: Promise<void> | null = null;
+  private loginPromise: Promise<void> | null = null;
+  private authGeneration = 0;
 
-  setToken(token: string | null) {
-    this.token = token;
-    if (typeof window !== "undefined") {
-      if (token) {
-        sessionStorage.setItem("cv_token", token);
-        document.cookie = `access_token=${token}; path=/; max-age=1800; SameSite=Lax`;
-      } else {
-        sessionStorage.removeItem("cv_token");
-        document.cookie = "access_token=; path=/; max-age=0; SameSite=Lax";
-      }
-    }
+  private signedOut(): boolean { return localStorage.getItem("cv_signed_out") === "1"; }
+
+  private storageChanged = (event: StorageEvent) => {
+    if (event.key !== "cv_signed_out") return;
+    this.expireSession();
+  };
+
+  private requireCurrentSession(generation: number): void {
+    if (generation !== this.authGeneration || this.signedOut()) throw new ApiError("Your session changed. Please sign in again.", 401);
   }
 
-  getToken(): string | null {
-    if (this.token) return this.token;
-    if (typeof window !== "undefined") {
-      this.token = sessionStorage.getItem("cv_token");
+  private setToken(token: string | null, expiresIn = 0) {
+    this.token = token;
+    this.expiresAt = token ? Date.now() + expiresIn * 1000 : 0;
+  }
+
+  async initialize(): Promise<void> {
+    // Remove credentials left by earlier clients. New browser sessions use only
+    // memory + server-issued HttpOnly cookies; native tokens never cross the bridge.
+    sessionStorage.removeItem("cv_token");
+    if (sessionStorage.getItem("cv_signed_out")) { localStorage.setItem("cv_signed_out", "1"); sessionStorage.removeItem("cv_signed_out"); }
+    window.addEventListener("storage", this.storageChanged);
+  }
+
+  async getCachedUser(): Promise<User | null> {
+    if (this.signedOut()) return null;
+    return isNative() ? (await nativeVault.sessionInfo()).user : null;
+  }
+
+  private expireSession(): void {
+    this.authGeneration += 1;
+    this.setToken(null);
+    window.dispatchEvent(new Event("cv_session_expired"));
+  }
+
+  private refresh(): Promise<void> {
+    if (this.signedOut()) return Promise.reject(new ApiError("Please sign in again.", 401));
+    if (this.refreshPromise) return this.refreshPromise;
+    const generation = this.authGeneration;
+    this.refreshPromise = (async () => {
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE}/api/auth/refresh`, { method: "POST", credentials: "include" });
+      } catch {
+        throw new ApiError("Unable to connect. Check your connection and try again.", 0);
+      }
+      if (!response.ok) {
+        if (response.status === 401 && generation === this.authGeneration) this.expireSession();
+        throw new ApiError(errorMessage(await response.json().catch(() => null), "Please sign in again."), response.status);
+      }
+      const data = await response.json();
+      this.requireCurrentSession(generation);
+      this.setToken(data.access_token, data.expires_in);
+    })().finally(() => { this.refreshPromise = null; });
+    return this.refreshPromise;
+  }
+
+  private isAuthenticatedEndpoint(endpoint: string): boolean {
+    return !endpoint.startsWith("/api/public/") && !["/api/auth/login", "/api/auth/register", "/api/auth/logout"].includes(endpoint);
+  }
+
+  private async fetchResponse(endpoint: string, options: RequestInit = {}, retry = true): Promise<Response> {
+    const authenticated = this.isAuthenticatedEndpoint(endpoint);
+    const generation = this.authGeneration;
+    if (authenticated) {
+      if (this.signedOut()) throw new ApiError("Please sign in again.", 401);
+      if (!this.token || Date.now() >= this.expiresAt - 30_000) await this.refresh();
+      this.requireCurrentSession(generation);
     }
-    return this.token;
+    const headers = new Headers(options.headers);
+    if (authenticated && this.token) headers.set("Authorization", `Bearer ${this.token}`);
+    if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}${endpoint}`, { ...options, headers, credentials: "include" });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      throw new ApiError("Unable to connect. Check your connection and try again.", 0);
+    }
+    if (authenticated) this.requireCurrentSession(generation);
+    if (response.status === 401 && authenticated && retry) {
+      await this.refresh();
+      return this.fetchResponse(endpoint, options, false);
+    }
+    if (!response.ok) {
+      if (response.status === 401 && authenticated) this.expireSession();
+      throw new ApiError(errorMessage(await response.json().catch(() => null), response.statusText || "The request could not be completed."), response.status);
+    }
+    window.dispatchEvent(new Event("cv_api_live"));
+    return response;
   }
 
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const headers = new Headers(options.headers || {});
-    const token = this.getToken();
-
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
-    }
-
-    if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
-      headers.set("Content-Type", "application/json");
-    }
-
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers,
-      credentials: "include",
-    });
-
-    if (!response.ok) {
-      let errorDetail = "An unexpected error occurred.";
+    if (isNative()) {
+      if (options.body instanceof FormData) throw new ApiError("Use the native file picker to upload files.", 400);
+      const generation = this.authGeneration;
+      const authenticated = this.isAuthenticatedEndpoint(endpoint);
+      if (authenticated) this.requireCurrentSession(generation);
       try {
-        const errorData = await response.json();
-        errorDetail = errorData.detail || errorData.message || errorDetail;
-      } catch {
-        errorDetail = response.statusText || errorDetail;
+        const result = await nativeVault.request({
+          endpoint,
+          method: options.method || "GET",
+          body: typeof options.body === "string" ? JSON.parse(options.body) : undefined,
+          password: new Headers(options.headers).get("X-Share-Password") || undefined,
+        });
+        if (authenticated) this.requireCurrentSession(generation);
+        if (result.status >= 400) {
+          if (result.status === 401 && this.isAuthenticatedEndpoint(endpoint)) this.expireSession();
+          throw new ApiError(errorMessage(result.data, "The request could not be completed."), result.status);
+        }
+        window.dispatchEvent(new CustomEvent(result.cached ? "cv_cached_data" : "cv_api_live", { detail: result.cached_at }));
+        return result.data as T;
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+        const nativeError = error as { message?: string; code?: string };
+        if (nativeError.code === "AUTH_REQUIRED" && generation === this.authGeneration && authenticated) this.expireSession();
+        throw new ApiError(nativeError.message || "Unable to connect. Check your connection and try again.", nativeError.code === "AUTH_REQUIRED" ? 401 : 0);
       }
-      throw new Error(errorDetail);
     }
-
-    // Check if empty body (e.g. 204 or streaming)
+    const response = await this.fetchResponse(endpoint, options);
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
       return (await response.json()) as T;
@@ -82,31 +180,68 @@ class ApiClient {
   }
 
   // --- Auth ---
-  async register(data: any): Promise<User> {
+  async register(data: { full_name: string; email: string; password: string; confirm_password: string }): Promise<User> {
     return this.request<User>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
-  async login(data: any): Promise<{ access_token: string; refresh_token: string }> {
-    const res = await this.request<{ access_token: string; refresh_token: string }>(
-      "/api/auth/login",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
+  login(data: { email: string; password: string }): Promise<void> {
+    const generation = ++this.authGeneration;
+    const previousLogin = this.loginPromise;
+    const previousLogout = this.logoutPromise;
+    const current = () => { if (generation !== this.authGeneration) throw new ApiError("Your sign-in request was superseded. Try again.", 401); };
+    const promise = (async () => {
+      await previousLogout;
+      await previousLogin?.catch(() => undefined);
+      await this.refreshPromise?.catch(() => undefined);
+      current();
+      if (!isNative() && this.signedOut()) {
+        let response: Response;
+        try { response = await fetch(`${API_BASE}/api/auth/logout`, { method: "POST", credentials: "include" }); }
+        catch { throw new ApiError("Reconnect to finish signing out before signing in again.", 0); }
+        if (!response.ok) throw new ApiError("The previous session could not be revoked. Try again.", response.status);
       }
-    );
-    this.setToken(res.access_token);
-    return res;
+      current();
+      const res = await this.request<{ access_token?: string; expires_in: number }>("/api/auth/login", { method: "POST", body: JSON.stringify(data) });
+      current();
+      if (res.access_token) this.setToken(res.access_token, res.expires_in);
+      localStorage.removeItem("cv_signed_out");
+      localStorage.removeItem("cv_logout_pending");
+    })().finally(() => { if (this.loginPromise === promise) this.loginPromise = null; });
+    this.loginPromise = promise;
+    return promise;
   }
 
-  async logout(): Promise<void> {
-    try {
-      await this.request("/api/auth/logout", { method: "POST" });
-    } finally {
-      this.setToken(null);
+  logout(): Promise<void> {
+    if (this.logoutPromise) return this.logoutPromise;
+    const previousLogin = this.loginPromise;
+    this.authGeneration += 1;
+    this.setToken(null);
+    localStorage.setItem("cv_signed_out", "1");
+    window.dispatchEvent(new Event("cv_session_expired"));
+    const pending = () => { localStorage.setItem("cv_logout_pending", "1"); window.dispatchEvent(new Event("cv_logout_pending")); };
+    this.logoutPromise = (async () => {
+      await previousLogin?.catch(() => undefined);
+      await this.refreshPromise?.catch(() => undefined);
+      try {
+        const result = await this.request<{ revocation_pending?: boolean }>("/api/auth/logout", { method: "POST" });
+        if (result.revocation_pending) pending(); else localStorage.removeItem("cv_logout_pending");
+      } catch { pending(); }
+      finally { this.setToken(null); }
+    })().finally(() => { this.logoutPromise = null; });
+    return this.logoutPromise;
+  }
+
+  async retryPendingLogout(): Promise<void> {
+    if (isNative()) {
+      if (!(await nativeVault.retryRevocations()).pending) localStorage.removeItem("cv_logout_pending");
+      return;
     }
+    if (!localStorage.getItem("cv_logout_pending") || !this.signedOut()) return;
+    const response = await fetch(`${API_BASE}/api/auth/logout`, { method: "POST", credentials: "include" });
+    if (response.ok) localStorage.removeItem("cv_logout_pending");
   }
 
   async getMe(): Promise<User> {
@@ -120,11 +255,13 @@ class ApiClient {
     });
   }
 
-  async changePassword(data: any): Promise<{ message: string }> {
-    return this.request<{ message: string }>("/api/auth/change-password", {
+  async changePassword(data: { current_password: string; new_password: string; confirm_password: string }): Promise<{ message: string }> {
+    const result = await this.request<{ message: string }>("/api/auth/change-password", {
       method: "POST",
       body: JSON.stringify(data),
     });
+    this.expireSession();
+    return result;
   }
 
   // --- Files ---
@@ -151,13 +288,58 @@ class ApiClient {
     return this.request<Paginated<FileItem>>(`/api/files?${q.toString()}`);
   }
 
-  async uploadFile(file: File, folderId?: string | null): Promise<FileItem> {
-    const formData = new FormData();
-    formData.append("file", file);
+  async uploadFile(file: File, folderId?: string | null, options: UploadOptions = {}): Promise<FileItem> {
     const q = folderId ? `?folder_id=${encodeURIComponent(folderId)}` : "";
-    return this.request<FileItem>(`/api/files/upload${q}`, {
-      method: "POST",
-      body: formData,
+    return this.uploadMultipart<FileItem>(`/api/files/upload${q}`, file, options);
+  }
+
+  private async uploadMultipart<T>(endpoint: string, file: File, options: UploadOptions, retry = true): Promise<T> {
+    const generation = this.authGeneration;
+    this.requireCurrentSession(generation);
+    if (isNative()) throw new ApiError("Choose files using the Android file picker.", 400);
+    if (!file.size || file.size > 100 * 1024 * 1024) throw new ApiError("Choose a nonempty file up to 100 MB.", 400);
+    if (options.signal?.aborted) throw new DOMException("Upload cancelled", "AbortError");
+    if (!this.token || Date.now() >= this.expiresAt - 30_000) await this.refresh();
+    this.requireCurrentSession(generation);
+    if (options.signal?.aborted) throw new DOMException("Upload cancelled", "AbortError");
+    const requestId = options.requestId || crypto.randomUUID();
+    return new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const abort = () => xhr.abort();
+      const cleanup = () => options.signal?.removeEventListener("abort", abort);
+      xhr.open("POST", `${API_BASE}${endpoint}`);
+      xhr.withCredentials = true;
+      xhr.timeout = 15 * 60 * 1000;
+      xhr.setRequestHeader("Idempotency-Key", requestId);
+      if (this.token) xhr.setRequestHeader("Authorization", `Bearer ${this.token}`);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) options.onProgress?.(Math.min(100, Math.round(event.loaded * 100 / event.total)));
+      };
+      xhr.onload = async () => {
+        cleanup();
+        try { this.requireCurrentSession(generation); } catch (error) { reject(error); return; }
+        let data: unknown;
+        try { data = JSON.parse(xhr.responseText); } catch { data = null; }
+        if (xhr.status === 401 && retry) {
+          try {
+            await this.refresh();
+            resolve(await this.uploadMultipart<T>(endpoint, file, { ...options, requestId }, false));
+          } catch (error) { reject(error); }
+        } else if (xhr.status >= 200 && xhr.status < 300) {
+          window.dispatchEvent(new Event("cv_api_live"));
+          resolve(data as T);
+        } else {
+          if (xhr.status === 401) this.expireSession();
+          reject(new ApiError(errorMessage(data, "Upload failed. Try again."), xhr.status));
+        }
+      };
+      xhr.onerror = () => { cleanup(); reject(new ApiError("Connection interrupted. Retry to restart this upload safely.", 0)); };
+      xhr.ontimeout = () => { cleanup(); reject(new ApiError("Upload timed out. Retry when your connection is stable.", 0)); };
+      xhr.onabort = () => { cleanup(); reject(new DOMException("Upload cancelled", "AbortError")); };
+      options.signal?.addEventListener("abort", abort, { once: true });
+      const form = new FormData();
+      form.append("file", file);
+      xhr.send(form);
     });
   }
 
@@ -194,71 +376,45 @@ class ApiClient {
     });
   }
 
-  async bulkAction(fileIds: string[], action: string, folderId?: string | null): Promise<void> {
-    await this.request(`/api/files/bulk-action`, {
+  async bulkAction(fileIds: string[], action: string, folderId?: string | null): Promise<BulkActionResult> {
+    return this.request<BulkActionResult>(`/api/files/bulk-action`, {
       method: "POST",
       body: JSON.stringify({ file_ids: fileIds, action, folder_id: folderId }),
     });
   }
 
-  getFileDownloadUrl(id: string): string {
-    const token = this.getToken();
-    const q = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `${API_BASE}/api/files/${id}/download${q}`;
-  }
-
   async downloadFile(id: string, filename: string): Promise<void> {
-    const token = this.getToken();
-    if (window.CloudVaultAndroid?.downloadFileWithToken && token) {
-      const started = window.CloudVaultAndroid.downloadFileWithToken(id, filename, token);
-      if (started) return;
-    } else if (window.CloudVaultAndroid?.downloadFile) {
-      const started = window.CloudVaultAndroid.downloadFile(id, filename);
-      if (!started) throw new Error("Android could not start this download. Please try again.");
-      return;
-    }
-
-    const headers = new Headers();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-
-    const response = await fetch(this.getFileDownloadUrl(id), {
-      headers,
-      credentials: "include",
-    });
-
-    if (!response.ok) {
-      let message = "The file could not be downloaded.";
-      try {
-        const error = await response.json();
-        message = error.detail || error.message || message;
-      } catch {
-        message = response.statusText || message;
-      }
-      throw new Error(message);
-    }
-
-    if (response.headers.get("content-type")?.includes("application/json")) {
-      const result = await response.json();
-      if (result.download_url) {
-        window.location.assign(result.download_url);
+    const generation = this.authGeneration;
+    if (isNative()) {
+      if (isDeviceVault()) {
+        this.requireCurrentSession(generation);
+        await nativeVault.exportOffline({ id });
         return;
       }
+      const file = await this.getFile(id);
+      this.requireCurrentSession(generation);
+      await nativeVault.enqueueDownload({ file });
+      window.dispatchEvent(new Event("cv_transfers_changed"));
+      return;
     }
-
-    const objectUrl = URL.createObjectURL(await response.blob());
-    const link = document.createElement("a");
-    link.href = objectUrl;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    const file = await this.getFile(id);
+    const response = await this.fetchResponse(`/api/files/${id}/download?direct=true`);
+    const blob = await readFileResponse(response, { size: file.size_bytes, checksum: file.checksum, filename: file.original_filename, mime: file.mime_type });
+    this.requireCurrentSession(generation);
+    saveBrowserBlob(blob, file.original_filename || filename);
   }
 
-  getFilePreviewUrl(id: string): string {
-    const token = this.getToken();
-    const q = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `${API_BASE}/api/files/${id}/preview${q}`;
+  async getPreviewBlob(id: string, signal?: AbortSignal): Promise<Blob> {
+    const generation = this.authGeneration;
+    this.requireCurrentSession(generation);
+    if (isNative()) {
+      const result = await nativeVault.preview({ endpoint: `/api/files/${id}/preview`, fileId: id });
+      this.requireCurrentSession(generation);
+      return validateFileBlob(blobFromBase64(result.data, result.mime));
+    }
+    const blob = await readFileResponse(await this.fetchResponse(`/api/files/${id}/preview`, { signal }));
+    this.requireCurrentSession(generation);
+    return blob;
   }
 
   // --- Versions ---
@@ -266,13 +422,8 @@ class ApiClient {
     return this.request<FileVersion[]>(`/api/files/${fileId}/versions`);
   }
 
-  async uploadNewVersion(fileId: string, file: File): Promise<FileVersion> {
-    const formData = new FormData();
-    formData.append("file", file);
-    return this.request<FileVersion>(`/api/files/${fileId}/versions`, {
-      method: "POST",
-      body: formData,
-    });
+  async uploadNewVersion(fileId: string, file: File, options: UploadOptions = {}): Promise<FileVersion> {
+    return this.uploadMultipart<FileVersion>(`/api/files/${fileId}/versions`, file, options);
   }
 
   async restoreVersion(fileId: string, versionId: string): Promise<FileItem> {
@@ -371,14 +522,25 @@ class ApiClient {
     });
   }
 
-  getPublicDownloadUrl(token: string, password?: string): string {
-    const q = password ? `?password=${encodeURIComponent(password)}` : "";
-    return `${API_BASE}/api/public/shares/${token}/download${q}`;
+  async downloadPublicFile(token: string, filename: string, password?: string): Promise<boolean> {
+    if (isNative()) return (await nativeVault.exportPublic({ token, filename, password })).saved;
+    const file = await this.getPublicShareInfo(token);
+    const response = await this.fetchResponse(`/api/public/shares/${encodeURIComponent(token)}/download`, {
+      method: "POST", body: password !== undefined ? JSON.stringify({ password }) : undefined,
+    });
+    saveBrowserBlob(await readFileResponse(response, { size: file.file_size, filename: file.filename, mime: file.mime_type }), file.filename || filename);
+    return true;
   }
 
-  getPublicPreviewUrl(token: string, password?: string): string {
-    const q = password ? `?password=${encodeURIComponent(password)}` : "";
-    return `${API_BASE}/api/public/shares/${token}/preview${q}`;
+  async getPublicPreviewBlob(token: string, password?: string, signal?: AbortSignal): Promise<Blob> {
+    const endpoint = `/api/public/shares/${encodeURIComponent(token)}/preview`;
+    if (isNative()) {
+      const result = await nativeVault.preview({ endpoint, password });
+      return validateFileBlob(blobFromBase64(result.data, result.mime));
+    }
+    return readFileResponse(await this.fetchResponse(endpoint, {
+      method: "POST", signal, body: password !== undefined ? JSON.stringify({ password }) : undefined,
+    }));
   }
 
   // --- Dashboard & Storage ---
@@ -393,6 +555,18 @@ class ApiClient {
   // --- Trash ---
   async getTrashItems(page: number = 1): Promise<Paginated<FileItem>> {
     return this.request<Paginated<FileItem>>(`/api/trash?page=${page}`);
+  }
+
+  async getTrashedFolders(page = 1): Promise<Paginated<FolderItem>> {
+    return this.request<Paginated<FolderItem>>(`/api/trash/folders?page=${page}`);
+  }
+
+  async restoreFolder(id: string): Promise<{ message: string }> {
+    return this.request(`/api/trash/folders/${id}/restore`, { method: "POST" });
+  }
+
+  async permanentlyDeleteFolder(id: string): Promise<{ message: string }> {
+    return this.request(`/api/trash/folders/${id}/permanent`, { method: "DELETE" });
   }
 
   async restoreTrashItem(id: string): Promise<void> {
@@ -450,15 +624,6 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify({ tag_ids: tagIds }),
     });
-  }
-}
-
-declare global {
-  interface Window {
-    CloudVaultAndroid?: {
-      downloadFile: (id: string, filename: string) => boolean;
-      downloadFileWithToken?: (id: string, filename: string, token: string) => boolean;
-    };
   }
 }
 

@@ -1,18 +1,22 @@
 """Dashboard analytics and statistics service."""
 
-import uuid
 from collections import defaultdict
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, func, desc
 
+from sqlalchemy import desc, func, select
+from sqlalchemy.orm import Session, joinedload
+
+from app.models.activity import ActivityLog
 from app.models.file import File
 from app.models.folder import Folder
-from app.models.user import User
 from app.models.share import FileShare
-from app.models.activity import ActivityLog
-from app.schemas.dashboard import DashboardStatsResponse, FileTypeStat, StorageUsageResponse
-from app.schemas.file import FileResponse
+from app.models.user import User
 from app.schemas.activity import ActivityResponse
+from app.schemas.dashboard import (
+    DashboardStatsResponse,
+    FileTypeStat,
+    StorageUsageResponse,
+)
+from app.schemas.file import FileResponse
 from app.utils.file_utils import get_file_category
 
 

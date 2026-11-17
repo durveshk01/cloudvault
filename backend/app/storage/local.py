@@ -2,8 +2,11 @@
 
 import asyncio
 import os
+import shutil
+import uuid
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
+from typing import BinaryIO
 
 from app.core.config import settings
 from app.storage.base import StorageProvider
@@ -23,7 +26,7 @@ class LocalStorageProvider(StorageProvider):
         try:
             target_path.relative_to(self.base_path)
         except ValueError:
-            raise ValueError(f"Path traversal detected: {storage_key}")
+            raise ValueError(f"Path traversal detected: {storage_key}") from None
         if target_path == self.base_path:
             raise ValueError(f"Path traversal detected: {storage_key}")
         return target_path
@@ -49,6 +52,22 @@ class LocalStorageProvider(StorageProvider):
                 return f.read()
 
         return await asyncio.to_thread(_read)
+
+    async def save_file_object(self, storage_key: str, content: BinaryIO) -> str:
+        target = self._resolve_path(storage_key)
+
+        def write():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
+            try:
+                with temporary.open("wb") as output:
+                    shutil.copyfileobj(content, output, length=65536)
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+        await asyncio.to_thread(write)
+        return storage_key
 
     def get_file_stream(self, storage_key: str, chunk_size: int = 65536) -> Generator[bytes, None, None]:
         target_path = self._resolve_path(storage_key)

@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
-import { History, X, Download, RotateCcw, Upload, CheckCircle2, Shield } from "lucide-react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
+import { History, X, RotateCcw, Upload, CheckCircle2 } from "lucide-react";
 import { FileItem, FileVersion } from "@/types";
 import { api } from "@/lib/api";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { LoadError } from "@/components/ui/LoadError";
+import { useDialog } from "@/lib/use-dialog";
+import { UploadModal } from "@/components/modals/UploadModal";
 
 interface VersionHistoryModalProps {
   file: FileItem | null;
@@ -22,65 +24,58 @@ export function VersionHistoryModal({
 }: VersionHistoryModalProps) {
   const [versions, setVersions] = useState<FileVersion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const [activeVersion, setActiveVersion] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const loadGeneration = useRef(0);
+  const fileId = file?.id;
+  const dialog = useDialog(isOpen && !!file, onClose);
 
-  const loadVersions = () => {
-    if (!file) return;
+  const loadVersions = useCallback(async () => {
+    if (!fileId) return;
+    const generation = ++loadGeneration.current;
     setIsLoading(true);
     setLoadError(false);
-    api.getVersions(file.id)
-      .then(setVersions)
-      .catch(() => setLoadError(true))
-      .finally(() => setIsLoading(false));
-  };
+    try {
+      const [history, metadata] = await Promise.all([api.getVersions(fileId), api.getFile(fileId)]);
+      if (generation !== loadGeneration.current) return;
+      setVersions(history); setActiveVersion(metadata.current_version);
+    } catch { if (generation === loadGeneration.current) setLoadError(true); }
+    finally { if (generation === loadGeneration.current) setIsLoading(false); }
+  }, [fileId]);
 
   useEffect(() => {
-    if (file && isOpen) {
-      loadVersions();
+    setUploadOpen(false);
+    if (fileId && isOpen) {
+      void loadVersions();
       setError(null);
     }
-  }, [file, isOpen]);
-
-  if (!isOpen || !file) return null;
-
-  const handleUploadNewVersion = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-
-    setIsUploading(true);
-    setError(null);
-    try {
-      await api.uploadNewVersion(file.id, f);
-      loadVersions();
-      if (onVersionRestored) onVersionRestored();
-    } catch (err: any) {
-      setError(err.message || "Failed to upload new version.");
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
+    const refresh = () => { if (isOpen && fileId) void loadVersions(); };
+    window.addEventListener("refresh_files", refresh);
+    return () => { loadGeneration.current += 1; window.removeEventListener("refresh_files", refresh); };
+  }, [fileId, isOpen, loadVersions]);
 
   const handleRestore = async (versionId: string) => {
+    if (!fileId || restoring) return;
     if (!confirm("Are you sure you want to restore this version? It will become the active file.")) {
       return;
     }
 
+    setRestoring(versionId); setError(null);
     try {
-      await api.restoreVersion(file.id, versionId);
-      loadVersions();
+      await api.restoreVersion(fileId, versionId);
+      await loadVersions();
       if (onVersionRestored) onVersionRestored();
-    } catch (err: any) {
-      setError(err.message || "Failed to restore version.");
-    }
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Failed to restore version."); }
+    finally { setRestoring(null); }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-      <div role="dialog" aria-modal="true" aria-labelledby="version-history-title" className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] sm:max-h-[85vh]">
+    <>
+    {isOpen && file && <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+      <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="version-history-title" className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] max-h-[90dvh] sm:max-h-[85vh]">
         {/* Header */}
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -110,25 +105,19 @@ export function VersionHistoryModal({
             <p className="text-[11px] text-muted-foreground">Preserves existing versions in history</p>
           </div>
           <div>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleUploadNewVersion}
-              className="hidden"
-            />
             <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
+              onClick={() => setUploadOpen(true)}
+              disabled={!!restoring}
               className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
             >
               <Upload className="w-3.5 h-3.5" />
-              {isUploading ? "Uploading..." : "Upload New Version"}
+              Upload New Version
             </button>
           </div>
         </div>
 
         {error && (
-          <div className="px-4 py-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-medium border-b border-red-200 dark:border-red-800">
+          <div role="alert" className="px-4 py-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-medium border-b border-red-200 dark:border-red-800">
             {error}
           </div>
         )}
@@ -147,7 +136,7 @@ export function VersionHistoryModal({
             </div>
           ) : (
             versions.map((v) => {
-              const isCurrent = v.version_number === file.current_version;
+              const isCurrent = v.version_number === activeVersion;
 
               return (
                 <div
@@ -183,12 +172,14 @@ export function VersionHistoryModal({
                   <div className="flex items-center gap-1.5 shrink-0">
                     {!isCurrent && (
                       <button
-                        onClick={() => handleRestore(v.id)}
+                         onClick={() => handleRestore(v.id)}
+                         disabled={!!restoring}
+                         aria-label={`Restore version ${v.version_number}`}
                         className="p-1.5 text-muted-foreground hover:text-indigo-600 rounded-lg hover:bg-accent flex items-center gap-1 text-xs font-medium"
                         title="Restore to this version"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Restore</span>
+                        <span>{restoring === v.id ? "Restoring…" : "Restore"}</span>
                       </button>
                     )}
                   </div>
@@ -208,6 +199,8 @@ export function VersionHistoryModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>}
+    <UploadModal isOpen={isOpen && !!file && uploadOpen} onClose={() => setUploadOpen(false)} versionFileId={fileId} onUploadComplete={() => { void loadVersions(); onVersionRestored?.(); }} />
+    </>
   );
 }

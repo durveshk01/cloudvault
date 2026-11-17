@@ -2,7 +2,8 @@
 
 import uuid
 from typing import Annotated
-from fastapi import APIRouter, Depends, Query, status
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -41,9 +42,9 @@ def update_notification(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Mark a notification as read or unread."""
-    notif = NotificationService.mark_as_read(db, notification_id, current_user.id)
+    notif = NotificationService.mark_as_read(db, notification_id, current_user.id, is_read=req.is_read)
     if not notif:
-        return Response(status_code=status.HTTP_404_NOT_FOUND)
+        raise HTTPException(status_code=404, detail="Notification not found.")
     return NotificationResponse.model_validate(notif)
 
 

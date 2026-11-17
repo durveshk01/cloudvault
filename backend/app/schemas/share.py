@@ -1,15 +1,18 @@
 """Share and ShareLink schemas."""
 
 import uuid
-from datetime import datetime
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from datetime import UTC, datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
 from app.schemas.file import FileResponse
-from app.schemas.user import UserResponse
+from app.schemas.user import CollaboratorResponse
 
 
 class FileShareCreate(BaseModel):
     shared_with_email: EmailStr
-    permission: str = Field("viewer", description="viewer or editor")
+    permission: Literal["viewer", "editor"] = "viewer"
 
 
 class FileShareResponse(BaseModel):
@@ -20,8 +23,8 @@ class FileShareResponse(BaseModel):
     permission: str
     created_at: datetime
     file: FileResponse | None = None
-    sharer: UserResponse | None = None
-    recipient: UserResponse | None = None
+    sharer: CollaboratorResponse | None = None
+    recipient: CollaboratorResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -29,8 +32,15 @@ class FileShareResponse(BaseModel):
 class ShareLinkCreate(BaseModel):
     expires_at: datetime | None = None
     password: str | None = Field(None, min_length=4, max_length=100)
-    max_downloads: int | None = Field(None, ge=1)
-    permission: str = Field("view", description="view or download")
+    max_downloads: int | None = Field(None, ge=1, le=1000000)
+    permission: Literal["view", "download"] = "view"
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_in_utc(cls, value):
+        if value is None:
+            return None
+        return (value.replace(tzinfo=UTC) if value.tzinfo is None else value).astimezone(UTC)
 
 
 class ShareLinkResponse(BaseModel):
@@ -61,4 +71,4 @@ class ShareLinkPublicResponse(BaseModel):
 
 
 class ShareLinkVerifyRequest(BaseModel):
-    password: str | None = None
+    password: str | None = Field(None, max_length=100)

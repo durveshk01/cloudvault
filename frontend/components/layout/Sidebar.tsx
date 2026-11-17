@@ -16,10 +16,12 @@ import {
   Settings,
   Shield,
   Layers,
+  Download,
 } from "lucide-react";
 import { cn, formatBytes } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { StorageUsage } from "@/types";
+import { useRuntime } from "@/lib/runtime-context";
 
 interface SidebarProps {
   onCloseMobile?: () => void;
@@ -27,6 +29,7 @@ interface SidebarProps {
 
 export function Sidebar({ onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
+  const { device } = useRuntime();
   const [storage, setStorage] = useState<StorageUsage | null>(null);
   const [storageUnavailable, setStorageUnavailable] = useState(false);
 
@@ -54,6 +57,7 @@ export function Sidebar({ onCloseMobile }: SidebarProps) {
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: Layers },
     { label: "My Files", href: "/files", icon: FolderOpen },
+    { label: device ? "Device files & transfers" : "Offline & transfers", href: "/offline", icon: Download },
     { label: "Shared with Me", href: "/shared", icon: Users },
     { label: "Shared by Me", href: "/shared-by-me", icon: Share2 },
     { label: "Recent", href: "/recent", icon: Clock },
@@ -75,15 +79,15 @@ export function Sidebar({ onCloseMobile }: SidebarProps) {
           <span className="font-bold text-lg tracking-tight text-foreground flex items-center gap-1.5">
             CloudVault
             <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 px-1.5 py-0.5 rounded">
-              v1.0
+              v1.1
             </span>
           </span>
-          <span className="text-xs text-muted-foreground font-medium">Secure Cloud Drive</span>
+          <span className="text-xs text-muted-foreground font-medium">{device ? "Encrypted Device Vault" : "Secure Cloud Drive"}</span>
         </div>
       </div>
 
       {/* Nav Links */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav aria-label="Main navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));

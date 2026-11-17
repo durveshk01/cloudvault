@@ -3,30 +3,51 @@
 import asyncio
 import os
 import sys
-import uuid
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import hash_password
-from app.models.user import User
-from app.models.folder import Folder
-from app.models.file import File, FileVersion
-from app.models.tag import Tag, FileTag
 from app.models.activity import ActivityLog
+from app.models.file import File, FileVersion
+from app.models.folder import Folder
 from app.models.notification import Notification
+from app.models.tag import FileTag, Tag
+from app.models.user import User
 from app.storage import get_storage_provider
-from app.utils.hashing import calculate_sha256
 from app.utils.file_utils import generate_storage_key
-
+from app.utils.hashing import calculate_sha256
 
 DEMO_EMAIL = "demo@cloudvault.com"
-DEMO_PASSWORD = "DemoPassword123!"
+DEMO_PASSWORD = settings.DEMO_PASSWORD or ("DemoPassword123!" if settings.ENVIRONMENT != "production" else None)
 DEMO_NAME = "Alex Taylor"
+
+# Only these reproducible, unmodified demo bytes can be recreated safely.
+# Never invent placeholder content for real uploads or historical revisions.
+SAMPLE_CONTENTS = {
+    "Welcome_to_CloudVault.md": b"# Welcome to CloudVault\n\nCloudVault is a secure, modern cloud file storage and sharing platform.\n\n### Key Features:\n- Fast and secure file upload\n- Real-time previews\n- Granular sharing controls\n- File versioning\n- Responsive desktop & mobile design\n",
+    "project_metrics_2026.csv": b"Month,Uploads,Downloads,StorageGB\nJan,120,450,12.5\nFeb,180,620,18.2\nMar,240,890,25.6\nApr,310,1100,34.1\nMay,420,1450,45.8\n",
+    "system_architecture_overview.txt": b"CloudVault Architecture Overview\n===============================\nFrontend: Next.js 14, React 18, Tailwind CSS, Lucide icons\nBackend: FastAPI, SQLAlchemy 2.0, Pydantic v2\nStorage: Abstract Storage Interface (Local Filesystem / AWS S3 / MinIO)\nDatabase: PostgreSQL\nSecurity: Argon2id, JWT, Presigned URLs, RBAC\n",
+}
+
+
+async def restore_demo_files(db, storage, user):
+    for file in db.query(File).filter(File.owner_id == user.id).all():
+        if await storage.file_exists(file.storage_key):
+            continue
+        content = SAMPLE_CONTENTS.get(file.original_filename)
+        if content is None or len(content) != file.size_bytes or calculate_sha256(content) != file.checksum:
+            print(f"Missing original content; re-upload or restore from backup: {file.original_filename}")
+            continue
+        await storage.save_file(file.storage_key, content)
+        print(f"Restored verified demo storage: {file.original_filename}")
 
 
 async def seed_database():
+    if not DEMO_PASSWORD:
+        raise RuntimeError("Set DEMO_PASSWORD explicitly before seeding a production demo account.")
     print("Initializing CloudVault Database Schema...")
     db = SessionLocal()
     storage = get_storage_provider()
@@ -36,21 +57,7 @@ async def seed_database():
         existing_user = db.query(User).filter(User.email == DEMO_EMAIL).first()
         if existing_user:
             print(f"Demo user '{DEMO_EMAIL}' already exists. Verifying storage files...")
-            sample_contents = {
-                "Welcome_to_CloudVault.md": b"# Welcome to CloudVault\n\nCloudVault is a secure, modern cloud file storage and sharing platform.\n\n### Key Features:\n- Fast and secure file upload\n- Real-time previews\n- Granular sharing controls\n- File versioning\n- Responsive desktop & mobile design\n",
-                "project_metrics_2026.csv": b"Month,Uploads,Downloads,StorageGB\nJan,120,450,12.5\nFeb,180,620,18.2\nMar,240,890,25.6\nApr,310,1100,34.1\nMay,420,1450,45.8\n",
-                "system_architecture_overview.txt": b"CloudVault Architecture Overview\n===============================\nFrontend: Next.js 14, React 18, Tailwind CSS, Lucide icons\nBackend: FastAPI, SQLAlchemy 2.0, Pydantic v2\nStorage: Abstract Storage Interface (Local Filesystem / AWS S3 / MinIO)\nDatabase: PostgreSQL\nSecurity: Argon2id, JWT, Presigned URLs, RBAC\n",
-            }
-            user_files = db.query(File).filter(File.owner_id == existing_user.id).all()
-            for f in user_files:
-                exists = await storage.file_exists(f.storage_key)
-                if not exists:
-                    content = sample_contents.get(
-                        f.original_filename,
-                        f"Sample file content for {f.original_filename}\n".encode("utf-8"),
-                    )
-                    await storage.save_file(f.storage_key, content)
-                    print(f"Restored storage for missing file: {f.original_filename}")
+            await restore_demo_files(db, storage, existing_user)
             return
 
         print("Creating demo user...")
@@ -58,7 +65,7 @@ async def seed_database():
             email=DEMO_EMAIL,
             full_name=DEMO_NAME,
             password_hash=hash_password(DEMO_PASSWORD),
-            storage_quota_bytes=1073741824,  # 1 GB
+            storage_quota_bytes=settings.DEFAULT_STORAGE_QUOTA_BYTES,
             storage_used_bytes=0,
             is_active=True,
         )
@@ -99,21 +106,21 @@ async def seed_database():
         files_data = [
             (
                 "Welcome_to_CloudVault.md",
-                b"# Welcome to CloudVault\n\nCloudVault is a secure, modern cloud file storage and sharing platform.\n\n### Key Features:\n- Fast and secure file upload\n- Real-time previews\n- Granular sharing controls\n- File versioning\n- Responsive desktop & mobile design\n",
+                SAMPLE_CONTENTS["Welcome_to_CloudVault.md"],
                 "text/markdown",
                 folder_docs.id,
                 True,
             ),
             (
                 "project_metrics_2026.csv",
-                b"Month,Uploads,Downloads,StorageGB\nJan,120,450,12.5\nFeb,180,620,18.2\nMar,240,890,25.6\nApr,310,1100,34.1\nMay,420,1450,45.8\n",
+                SAMPLE_CONTENTS["project_metrics_2026.csv"],
                 "text/csv",
                 folder_subproject.id,
                 False,
             ),
             (
                 "system_architecture_overview.txt",
-                b"CloudVault Architecture Overview\n===============================\nFrontend: Next.js 14, React 18, Tailwind CSS, Lucide icons\nBackend: FastAPI, SQLAlchemy 2.0, Pydantic v2\nStorage: Abstract Storage Interface (Local Filesystem / AWS S3 / MinIO)\nDatabase: PostgreSQL\nSecurity: Argon2id, JWT, Presigned URLs, RBAC\n",
+                SAMPLE_CONTENTS["system_architecture_overview.txt"],
                 "text/plain",
                 None,  # Root
                 True,
@@ -206,7 +213,6 @@ async def seed_database():
         print("\n==========================================")
         print(" Demo Data Successfully Seeded!")
         print(" Email:    " + DEMO_EMAIL)
-        print(" Password: " + DEMO_PASSWORD)
         print(" Full Name:" + DEMO_NAME)
         print("==========================================\n")
 

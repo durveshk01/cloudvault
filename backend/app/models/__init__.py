@@ -8,12 +8,15 @@ from app.models.activity import ActivityLog
 from app.models.file import File, FileVersion
 from app.models.folder import Folder
 from app.models.notification import Notification
+from app.models.session import AuthSession
 from app.models.share import FileShare, ShareLink
 from app.models.tag import FileTag, Tag
+from app.models.upload import UploadSession
 from app.models.user import User
 
 __all__ = [
     "ActivityLog",
+    "AuthSession",
     "File",
     "FileShare",
     "FileTag",
@@ -22,5 +25,6 @@ __all__ = [
     "Notification",
     "ShareLink",
     "Tag",
+    "UploadSession",
     "User",
 ]

@@ -4,9 +4,11 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Shield, Lock, Mail, ArrowRight, AlertCircle, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useRuntime } from "@/lib/runtime-context";
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { device } = useRuntime();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -50,12 +52,12 @@ export default function LoginPage() {
           </Link>
           <h1 className="pt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Welcome back</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Sign in to access your secure files and storage
+            {device ? "Unlock the encrypted vault on this phone. No internet needed." : "Sign in to access your secure files and storage"}
           </p>
         </div>
 
         {/* Demo Account Banner */}
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-white/80 p-4 text-sm shadow-sm shadow-indigo-950/5 backdrop-blur dark:border-indigo-900/70 dark:bg-slate-900/80">
+        {!device && <div className="flex items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-white/80 p-4 text-sm shadow-sm shadow-indigo-950/5 backdrop-blur dark:border-indigo-900/70 dark:bg-slate-900/80">
           <div>
             <span className="font-semibold text-slate-800 dark:text-slate-100">
               Trying CloudVault?
@@ -72,7 +74,7 @@ export default function LoginPage() {
             <KeyRound className="w-3.5 h-3.5" />
             Fill Demo
           </button>
-        </div>
+        </div>}
 
         {/* Login Form */}
         <div className="space-y-5 rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 sm:p-8">
@@ -93,6 +95,7 @@ export default function LoginPage() {
                 <input
                   id="email"
                   autoComplete="email"
+                  maxLength={254}
                   type="email"
                   required
                   placeholder="alex@example.com"
@@ -112,6 +115,7 @@ export default function LoginPage() {
                 <input
                   id="password"
                   autoComplete="current-password"
+                  maxLength={128}
                   type="password"
                   required
                   placeholder="••••••••"

@@ -1,7 +1,6 @@
 """Unit and integration tests for file versioning and version restoration."""
 
 import io
-import pytest
 
 
 def test_file_versioning_lifecycle(client, auth_headers):
@@ -33,7 +32,7 @@ def test_file_versioning_lifecycle(client, auth_headers):
     assert versions_res.status_code == 200
     versions = versions_res.json()
     assert len(versions) == 2
-    v1_record = [v for v in versions if v["version_number"] == 1][0]
+    v1_record = next(v for v in versions if v["version_number"] == 1)
 
     # Restore Version 1
     restore_res = client.post(

@@ -1,10 +1,9 @@
 """Sharing and Public Link API endpoints."""
 
-import io
 import uuid
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from fastapi.responses import StreamingResponse
+
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -19,21 +18,12 @@ from app.schemas.share import (
     ShareLinkResponse,
     ShareLinkVerifyRequest,
 )
+from app.services.download_service import stored_response
 from app.services.share_service import ShareService
 from app.storage import get_storage_provider
 from app.utils.file_utils import is_previewable
 
 router = APIRouter(prefix="/api", tags=["Sharing"])
-
-
-async def _read_shared_file(storage, storage_key: str) -> bytes:
-    try:
-        return await storage.get_file(storage_key)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="The stored file content is unavailable. Ask the owner to upload the file again.",
-        ) from exc
 
 
 @router.post("/files/{file_id}/shares", response_model=FileShareResponse, status_code=status.HTTP_201_CREATED)
@@ -116,7 +106,7 @@ def get_share_links_for_file(
 ):
     """List all active share links for a file."""
     links = ShareService.get_share_links_for_file(db, file_id, current_user.id)
-    return [ShareLinkResponse.model_validate(l) for l in links]
+    return [ShareLinkResponse.model_validate(link) for link in links]
 
 
 @router.delete("/share-links/{link_id}", response_model=MessageResponse)
@@ -172,10 +162,11 @@ def verify_public_link_password(
 async def download_public_shared_file(
     token: str,
     db: Annotated[Session, Depends(get_db)],
-    password: str | None = Query(None),
+    password: str | None = Header(None, alias="X-Share-Password", max_length=100),
+    req: ShareLinkVerifyRequest | None = Body(None),
 ):
     """Download a file via public share link with rate and quota limits checked."""
-    link, file = ShareService.verify_public_link(db, token, password=password)
+    link, file = ShareService.verify_public_link(db, token, password=req.password if req else password)
     if link.permission == "view":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -183,28 +174,25 @@ async def download_public_shared_file(
         )
 
     storage = get_storage_provider()
-    content = await _read_shared_file(storage, file.storage_key)
-    # Count only downloads whose stored content is available.
-    ShareService.increment_download_count(db, link.id)
-    safe_name = file.original_filename.encode("ascii", "ignore").decode("ascii") or "shared_file"
-    return StreamingResponse(
-        io.BytesIO(content),
-        media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
-    )
+    response = await stored_response(storage, file, shared=True)
+    # Corrupted/missing objects must not consume a limited public download.
+    try:
+        ShareService.increment_download_count(db, link.id)
+    except BaseException:
+        await response.background()
+        raise
+    return response
 
 
 @router.get("/public/shares/{token}/preview")
+@router.post("/public/shares/{token}/preview")
 async def preview_public_shared_file(
     token: str,
     db: Annotated[Session, Depends(get_db)],
-    password: str | None = Query(None),
+    password: str | None = Header(None, alias="X-Share-Password", max_length=100),
+    req: ShareLinkVerifyRequest | None = Body(None),
 ):
     """Safe inline preview of public shared file."""
-    link, file = ShareService.verify_public_link(db, token, password=password)
+    _link, file = ShareService.verify_public_link(db, token, password=req.password if req else password)
     storage = get_storage_provider()
-    content = await _read_shared_file(storage, file.storage_key)
-    mime = file.mime_type or "text/plain"
-    if mime == "image/svg+xml" or mime == "text/html":
-        mime = "text/plain"
-    return StreamingResponse(io.BytesIO(content), media_type=mime)
+    return await stored_response(storage, file, preview=True, shared=True)

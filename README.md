@@ -6,16 +6,16 @@
 [![Android APK](https://img.shields.io/badge/Android-APK%20Download-3DDC84.svg?style=for-the-badge&logo=android)](https://github.com/durveshk01/cloudvault/releases/latest)
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
-[![Next.js 14](https://img.shields.io/badge/Frontend-Next.js_14-black.svg?style=flat&logo=next.js)](https://nextjs.org)
+[![Next.js 15](https://img.shields.io/badge/Frontend-Next.js_15-black.svg?style=flat&logo=next.js)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/Language-TypeScript-3178C6.svg?style=flat&logo=typescript)](https://www.typescriptlang.org)
 [![Python 3.12](https://img.shields.io/badge/Language-Python_3.12-3776AB.svg?style=flat&logo=python)](https://python.org)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL_16-4169E1.svg?style=flat&logo=postgresql)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Deployment-Docker_Compose-2496ED.svg?style=flat&logo=docker)](https://www.docker.com)
-[![Pytest](https://img.shields.io/badge/Tests-35%20Passed-brightgreen.svg?style=flat)](https://docs.pytest.org)
+[![Pytest](https://img.shields.io/badge/Backend_Tests-85%20Passed-brightgreen.svg?style=flat)](https://docs.pytest.org)
 
-**CloudVault** is an enterprise-grade cloud file storage and secure sharing platform built from the ground up with **FastAPI**, **Next.js 14 App Router**, **TypeScript**, and **PostgreSQL**. Designed with a commercial SaaS user experience inspired by Google Drive and Dropbox, CloudVault demonstrates modern full-stack software engineering, defense-in-depth security, and cloud storage abstractions.
+**CloudVault** is a cloud file storage and secure sharing platform built with **FastAPI**, **Next.js 15 App Router**, **TypeScript**, and **PostgreSQL**, with a separate encrypted on-device Android vault.
 
-The CloudVault Android application runs the complete user interface on-device, leveraging the phone's CPU/GPU and local storage via `WebViewAssetLoader` for instant offline loading and navigation, while connecting directly to the FastAPI and PostgreSQL cloud backend on Render for secure storage operations. The latest APK is published in [GitHub Releases](https://github.com/durveshk01/cloudvault/releases/latest).
+The current Android build bundles the complete interface with Capacitor and stores accounts and files in a native encrypted device vault. It works without a server or internet connection. Cloud integration is an explicit development build mode, not the release default. Published APKs are available in [GitHub Releases](https://github.com/durveshk01/cloudvault/releases/latest); locally verified builds are written to `artifacts/`.
 
 ---
 
@@ -26,6 +26,7 @@ The CloudVault Android application runs the complete user interface on-device, l
 - **Hierarchical Folders**: Create, rename, delete, and navigate nested folder structures with real-time breadcrumbs.
 - **Drag-and-Drop Uploads**: Upload individual or multiple files with progress tracking, mime-type validation, and duplicate handling.
 - **In-Browser Previews**: Native modal previewing for images, PDFs, code files, and plain text.
+- **Verified Downloads**: Size and SHA-256 checks prevent missing, corrupted, or placeholder content from being saved as a document.
 - **Search & Filtering**: Instant server-side search by filename, category filter (Documents, Images, Media, Archives), and tag filters.
 - **Bulk Actions**: Multi-select toolbar for batch moves, soft-deletes, and restorations.
 - **Interactive Feedback**: Native non-blocking toast notifications for uploads, bulk actions, and link sharing.
@@ -55,7 +56,7 @@ The CloudVault Android application runs the complete user interface on-device, l
 
 | Layer | Technologies |
 |---|---|
-| **Frontend** | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, Lucide Icons, Recharts, Zod |
+| **Frontend** | Next.js 15 (App Router), React 18, TypeScript, Tailwind CSS, Lucide Icons, Recharts |
 | **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0, Pydantic v2, Alembic, Sliding-Window Rate Limiting, GZip |
 | **Database** | PostgreSQL 16 (Production/Docker), SQLite (Zero-config local development) |
 | **Storage Engine** | Abstract Storage Provider: Local Filesystem Storage & AWS S3 / MinIO Object Storage |
@@ -106,6 +107,10 @@ docker compose up -d --build
 - **Frontend App**: `http://localhost:3000`
 - **Backend API Docs**: `http://localhost:8000/docs`
 - **MinIO Console**: `http://localhost:9001` (user: `cloudvault_minio` / pass: `minio_secure_pass_123`)
+
+Port 3000 is the same-origin NGINX gateway. It replaces untrusted client-IP
+headers and the backend trusts only its private address; direct backend access
+is limited to host loopback. See the [proxy deployment notes](./docs/deployment.md#14-client-identity-and-proxy-timeouts).
 
 ---
 
@@ -166,9 +171,11 @@ Use the pre-seeded account to explore all features instantly:
 ### Backend Unit & Integration Tests (Pytest)
 ```bash
 cd backend
+pip install -r requirements-dev.txt
 python -m pytest tests/ -v
+ruff check app tests migrations
 ```
-All **34 tests** execute against an isolated in-memory SQLite database covering:
+The backend suite executes against an isolated in-memory SQLite database covering:
 - Authentication & registration workflows
 - Data isolation between multiple users
 - File uploads, downloads, and checksum verification
@@ -176,13 +183,22 @@ All **34 tests** execute against an isolated in-memory SQLite database covering:
 - Direct file sharing and access revocation
 - Tokenized public share links with passwords & download caps
 - Storage adapter isolation & version rollback
+- Missing/truncated/corrupted PDFs, verified public downloads, safe seed recovery, and cancellation cleanup
+- S3 downloads without an integrity bypass, delivery-failure spool cleanup, and trusted proxy rate-limit identity
 
 ### Frontend Typechecking & Production Build
 ```bash
 cd frontend
 npm run build
+npm run test:unit
+npx playwright install chromium
+npm run test:e2e
 ```
-Compiles and prerenders all 20 routes with zero type errors.
+The browser suite tests PDF upload/preview/download, Unicode filenames, and rejection of corrupted or JSON responses using an isolated mocked API. Backend storage/API behavior is covered separately by Pytest. Build the web frontend before running the browser suite.
+
+**Android build order:** `npm run build:android` creates and synchronizes the static device-vault frontend. Next.js uses `.next` internally even for this export, so do not run Android and web builds/tests concurrently. Run `npm run build` again afterward before starting or testing the web app. See [`scripts/android-release.py`](./scripts/android-release.py) for signed APK build and verification.
+
+**Production storage:** Render requires a private durable S3-compatible bucket and its credentials. Temporary instance storage must not hold originals. See [deployment and lost-document recovery](./docs/deployment.md#4-render-configuration-and-document-recovery).
 
 ---
 

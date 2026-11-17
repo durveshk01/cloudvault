@@ -2,9 +2,10 @@
 
 import uuid
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from sqlalchemy import select
 
 from app.api.deps import get_current_user, get_db
 from app.models.file import File
@@ -12,9 +13,34 @@ from app.models.folder import Folder
 from app.models.user import User
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.file import FileResponse
+from app.schemas.folder import FolderResponse
 from app.services.file_service import FileService
+from app.services.folder_service import FolderService
 
 router = APIRouter(prefix="/api/trash", tags=["Trash"])
+
+
+@router.get("/folders", response_model=PaginatedResponse[FolderResponse])
+def get_trashed_folders(
+    current_user: Annotated[User, Depends(get_current_user)], db: Annotated[Session, Depends(get_db)],
+    page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=100),
+):
+    query = select(Folder).where(Folder.owner_id == current_user.id, Folder.is_trashed.is_(True))
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    items = db.scalars(query.order_by(Folder.trashed_at.desc(), Folder.id).offset((page - 1) * page_size).limit(page_size)).all()
+    return PaginatedResponse(items=[FolderResponse.model_validate(folder) for folder in items], total=total, page=page, page_size=page_size, total_pages=max(1, (total + page_size - 1) // page_size))
+
+
+@router.post("/folders/{folder_id}/restore", response_model=MessageResponse)
+def restore_trashed_folder(folder_id: uuid.UUID, current_user: Annotated[User, Depends(get_current_user)], db: Annotated[Session, Depends(get_db)]):
+    count = FolderService.restore_folder(db, folder_id, current_user.id)
+    return MessageResponse(message=f"Folder restored with {count} files. Independently deleted items remain in trash.")
+
+
+@router.delete("/folders/{folder_id}/permanent", response_model=MessageResponse)
+async def purge_trashed_folder(folder_id: uuid.UUID, current_user: Annotated[User, Depends(get_current_user)], db: Annotated[Session, Depends(get_db)]):
+    count = await FolderService.permanent_delete_folder(db, folder_id, current_user.id)
+    return MessageResponse(message=f"Folder permanently deleted with {count} files.")
 
 
 @router.get("", response_model=PaginatedResponse[FileResponse])
@@ -78,18 +104,15 @@ async def empty_trash(
     ).all()
     count = 0
     for fid in trashed_files:
-        try:
-            await FileService.permanent_delete_file(db, fid, current_user.id)
-            count += 1
-        except Exception:
-            continue
+        await FileService.permanent_delete_file(db, fid, current_user.id)
+        count += 1
 
     # Also permanently remove trashed folders
     trashed_folders = db.scalars(
-        select(Folder).where(Folder.owner_id == current_user.id, Folder.is_trashed.is_(True))
+        select(Folder.id).where(Folder.owner_id == current_user.id, Folder.is_trashed.is_(True))
     ).all()
-    for tf in trashed_folders:
-        db.delete(tf)
-    db.commit()
+    for folder_id in trashed_folders:
+        if db.get(Folder, folder_id):
+            await FolderService.permanent_delete_folder(db, folder_id, current_user.id)
 
     return MessageResponse(message=f"Trash emptied. Permanently purged {count} files.")

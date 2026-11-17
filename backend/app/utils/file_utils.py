@@ -4,8 +4,8 @@ import mimetypes
 import os
 import re
 import uuid
-from datetime import datetime, timezone
-
+from datetime import UTC, datetime
+from urllib.parse import quote
 
 SAFE_EXTENSIONS = {
     # Documents
@@ -42,7 +42,7 @@ def sanitize_filename(filename: str) -> str:
     # Take basename only
     base = os.path.basename(filename.replace("\\", "/"))
     # Remove null bytes and dangerous chars
-    cleaned = re.sub(r'[\\/*?:"<>|\x00]', "", base).strip()
+    cleaned = re.sub(r'[\\/*?:"<>|\x00-\x1f\x7f]', "", base).strip().strip(".")[:255]
     return cleaned if cleaned else f"file_{uuid.uuid4().hex[:8]}"
 
 
@@ -97,7 +97,23 @@ def is_previewable(filename: str, mime_type: str | None = None) -> bool:
 
 def generate_storage_key(user_id: uuid.UUID, filename: str) -> str:
     """Generate a collision-proof, hierarchical, safe storage key."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     clean_name = sanitize_filename(filename)
     unique_suffix = uuid.uuid4().hex
     return f"users/{user_id}/{now.year}/{now.month:02d}/{unique_suffix}_{clean_name}"
+
+
+def content_disposition(filename: str) -> str:
+    """Safe attachment header with an ASCII fallback and preserved Unicode name."""
+    name = sanitize_filename(filename)
+    ascii_name = name.encode("ascii", "ignore").decode() or "download"
+    return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(name)}'
+
+
+def safe_preview_mime(mime: str | None) -> str:
+    if mime in {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/tiff", "application/pdf"}:
+        return mime
+    if mime and mime.startswith(("audio/", "video/")):
+        return mime
+    # HTML, SVG, XML and user-supplied active content are displayed only as text.
+    return "text/plain"

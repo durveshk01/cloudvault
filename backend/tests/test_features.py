@@ -1,7 +1,6 @@
 """Integration tests for dashboard, storage usage, activity logs, tags, notifications, and previews."""
 
 import io
-import pytest
 
 
 def test_health_check(client):
@@ -116,8 +115,10 @@ def test_file_preview_with_token_and_csp(client, auth_headers):
     assert preview_res.headers.get("x-frame-options") is None
 
 
-def test_rate_limiting(client):
+def test_rate_limiting(client, monkeypatch):
+    from app.core.config import settings
     from app.core.rate_limit import limiter
+    monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)
     limiter.clear()
 
     # The rate limit on /api/auth/login is 10/minute
@@ -137,4 +138,3 @@ def test_rate_limiting(client):
     assert statuses[-1] == 429
 
     limiter.clear()
-

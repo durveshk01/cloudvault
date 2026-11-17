@@ -1,13 +1,14 @@
 """Tag management service."""
 
 import uuid
-from sqlalchemy.orm import Session
-from sqlalchemy import select
-from fastapi import HTTPException, status
 
-from app.models.tag import Tag, FileTag
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.models.file import File
-from app.schemas.tag import TagCreate, FileTagRequest
+from app.models.tag import FileTag, Tag
+from app.schemas.tag import FileTagRequest, TagCreate
 
 
 class TagService:

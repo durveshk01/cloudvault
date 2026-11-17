@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Share2,
   X,
@@ -19,6 +19,9 @@ import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { LoadError } from "@/components/ui/LoadError";
 import { useToast } from "@/lib/toast-context";
+import { useDialog } from "@/lib/use-dialog";
+import { useRuntime } from "@/lib/runtime-context";
+import { nativeVault } from "@/lib/native";
 
 interface ShareModalProps {
   file: FileItem | null;
@@ -28,6 +31,10 @@ interface ShareModalProps {
 
 export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
   const toast = useToast();
+  const { device } = useRuntime();
+  const dialog = useDialog(isOpen && !!file, onClose);
+  const fileId = file?.id;
+  const loadGeneration = useRef(0);
   const [activeTab, setActiveTab] = useState<"users" | "links">("users");
 
   // User share state
@@ -52,30 +59,39 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
 
-  const loadData = () => {
-    if (!file) return;
+  const loadData = useCallback(() => {
+    if (!fileId) return;
+    const generation = ++loadGeneration.current;
     setIsLoadingShares(true);
     setSharesUnavailable(false);
-    api.getFileShares(file.id)
-      .then(setDirectShares)
-      .catch(() => setSharesUnavailable(true))
-      .finally(() => setIsLoadingShares(false));
+    api.getFileShares(fileId)
+      .then((shares) => { if (generation === loadGeneration.current) setDirectShares(shares); })
+      .catch(() => { if (generation === loadGeneration.current) setSharesUnavailable(true); })
+      .finally(() => { if (generation === loadGeneration.current) setIsLoadingShares(false); });
     setIsLoadingLinks(true);
     setLinksUnavailable(false);
-    api.getFileShareLinks(file.id)
-      .then(setShareLinks)
-      .catch(() => setLinksUnavailable(true))
-      .finally(() => setIsLoadingLinks(false));
-  };
+    if (device) { setShareLinks([]); setIsLoadingLinks(false); return; }
+    api.getFileShareLinks(fileId)
+      .then((links) => { if (generation === loadGeneration.current) setShareLinks(links); })
+      .catch(() => { if (generation === loadGeneration.current) setLinksUnavailable(true); })
+      .finally(() => { if (generation === loadGeneration.current) setIsLoadingLinks(false); });
+  }, [fileId, device]);
 
   useEffect(() => {
-    if (file && isOpen) {
+    if (fileId && isOpen) {
       loadData();
       setCreatedUrl(null);
       setUserShareError(null);
       setLinkError(null);
+      setEmail("");
+      setPassword("");
+      setExpiresAt("");
+      setMaxDownloads("");
+      setCopied(false);
+      setActiveTab(device ? "links" : "users");
     }
-  }, [file, isOpen]);
+    return () => { loadGeneration.current += 1; };
+  }, [fileId, isOpen, loadData, device]);
 
   if (!isOpen || !file) return null;
 
@@ -105,6 +121,14 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
     }
   };
 
+  const handleAndroidShare = async () => {
+    setIsCreatingLink(true);
+    setLinkError(null);
+    try { await nativeVault.openOffline({ id: file.id, share: true }); }
+    catch (error) { setLinkError(error instanceof Error ? error.message : "The Android share chooser could not be opened."); }
+    finally { setIsCreatingLink(false); }
+  };
+
   const handleCreateShareLink = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreatingLink(true);
@@ -112,12 +136,13 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
     try {
       const link = await api.createShareLink(file.id, {
         permission: linkPermission,
-        password: password.trim() ? password.trim() : null,
+        password: password || null,
         expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
         max_downloads: maxDownloads ? parseInt(maxDownloads, 10) : null,
       });
 
-      const fullUrl = link.share_url || `${window.location.origin}/shared/${link.token}`;
+      if (!link.share_url) throw new Error("The server did not return a public share URL. Check its FRONTEND_URL setting.");
+      const fullUrl = link.share_url;
       setCreatedUrl(fullUrl);
       setPassword("");
       setExpiresAt("");
@@ -153,7 +178,7 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-      <div role="dialog" aria-modal="true" aria-labelledby="share-modal-title" className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] sm:max-h-[85vh]">
+      <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="share-modal-title" className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] max-h-[90dvh] sm:max-h-[85vh]">
         {/* Header */}
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -186,7 +211,7 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
             }`}
           >
             <Users className="w-4 h-4" />
-            Registered Users
+            {device ? "Device accounts" : "Registered Users"}
           </button>
           <button
             onClick={() => setActiveTab("links")}
@@ -196,8 +221,8 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            <LinkIcon className="w-4 h-4" />
-            Public Link
+            {device ? <Share2 className="w-4 h-4" /> : <LinkIcon className="w-4 h-4" />}
+            {device ? "Send a copy" : "Public Link"}
           </button>
         </div>
 
@@ -206,6 +231,7 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
           {activeTab === "users" ? (
             /* TAB 1: Registered Users */
             <div className="space-y-4">
+              {device && <p className="text-xs text-muted-foreground">Share access with an account already created on this phone. Viewer access permits reading; Editor access also permits renaming and adding versions.</p>}
               <form onSubmit={handleShareWithUser} className="space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input
@@ -283,6 +309,12 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
                 )}
               </div>
             </div>
+          ) : device ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">Send this file through an installed Android app, Nearby Share, or Bluetooth. The recipient receives a copy; no CloudVault account or public link is needed.</p>
+              {linkError && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{linkError}</p>}
+              <button type="button" disabled={isCreatingLink} onClick={handleAndroidShare} className="w-full px-4 py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"><Share2 className="w-4 h-4" />{isCreatingLink ? "Preparing file…" : "Share with Android"}</button>
+            </div>
           ) : (
             /* TAB 2: Share Links */
             <div className="space-y-4">
@@ -297,6 +329,7 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
                     <input
                       type="text"
                       readOnly
+                      aria-label="Generated public share URL"
                       value={createdUrl}
                       className="flex-1 bg-white dark:bg-card border border-emerald-300 dark:border-emerald-700 rounded-lg px-2.5 py-1.5 text-xs text-foreground font-mono select-all"
                     />
@@ -317,10 +350,11 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+                    <label htmlFor="link-permission" className="block text-[11px] font-medium text-muted-foreground mb-1">
                       Permission
                     </label>
                     <select
+                      id="link-permission"
                       value={linkPermission}
                       onChange={(e) => setLinkPermission(e.target.value as any)}
                       className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none"
@@ -331,12 +365,15 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                    <label htmlFor="link-password" className="block text-[11px] font-medium text-muted-foreground mb-1 flex items-center gap-1">
                       <Lock className="w-3 h-3 text-muted-foreground" />
                       Optional Password
                     </label>
                     <input
+                      id="link-password"
                       type="password"
+                      maxLength={100}
+                      autoComplete="new-password"
                       placeholder="Require password..."
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -345,11 +382,12 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                    <label htmlFor="link-expiry" className="block text-[11px] font-medium text-muted-foreground mb-1 flex items-center gap-1">
                       <Calendar className="w-3 h-3 text-muted-foreground" />
                       Expires At
                     </label>
                     <input
+                      id="link-expiry"
                       type="datetime-local"
                       value={expiresAt}
                       onChange={(e) => setExpiresAt(e.target.value)}
@@ -358,13 +396,15 @@ export function ShareModal({ file, isOpen, onClose }: ShareModalProps) {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                    <label htmlFor="link-download-limit" className="block text-[11px] font-medium text-muted-foreground mb-1 flex items-center gap-1">
                       <DownloadCloud className="w-3 h-3 text-muted-foreground" />
                       Download Limit
                     </label>
                     <input
+                      id="link-download-limit"
                       type="number"
                       min="1"
+                      max="1000000"
                       placeholder="e.g. 5 downloads"
                       value={maxDownloads}
                       onChange={(e) => setMaxDownloads(e.target.value)}

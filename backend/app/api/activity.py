@@ -1,6 +1,7 @@
 """Activity logs API endpoints."""
 
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -21,4 +22,4 @@ def get_user_activity(
 ):
     """Retrieve audit and activity logs for current user."""
     logs = ActivityService.get_user_activities(db, current_user.id, limit=limit, offset=offset)
-    return [ActivityResponse.model_validate(l) for l in logs]
+    return [ActivityResponse.model_validate(log) for log in logs]
