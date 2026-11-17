@@ -14,7 +14,7 @@ committing and pushing all updated source to the existing GitHub repository.
 - [x] Repair CI dependency/runtime configuration and Docker packaging/API proxy.
 - [x] Replace temporary Render storage configuration with durable object storage requirements.
 - [ ] Verify browser upload, PDF preview, and byte-exact download end to end.
-- [ ] Run full backend/frontend checks and refresh Android assets/build if toolchain is available.
+- [x] Run full backend/frontend checks and refresh Android assets/build if toolchain is available.
 - [x] Document deployment and lost-file recovery requirements, plus remaining external blockers.
 
 ## Verification record
@@ -90,3 +90,92 @@ The screenshot alone does not prove which server file was downloaded. The code
 does prove that previous seed recovery could replace a PDF with plain text. Lost
 original uploads cannot be reconstructed from metadata/checksums; re-uploading
 the original or restoring an actual backup is required.
+
+## Resumed verification — 2026-11-17
+
+Resume baseline: `b663c2c`; working tree was clean. This pass continues the
+unchecked local verification tasks, not deployment or source publication.
+
+- [x] Recover the prior checklist and identify installed toolchains.
+- [x] Run backend tests and lint with the project's Python environment.
+- [x] Run frontend lint.
+- [x] Refresh the Android static export and verify a signed local APK.
+- [x] Rebuild the web frontend, then run unit tests, typecheck, and browser tests.
+- [x] Verify real local backend/browser upload, preview blob bytes, and exact download on the model-derived schema.
+- [ ] Verify the PDF actually renders its page in the browser; confirm the migrated-schema setup after a separate repair.
+- [x] Record evidence and remaining blockers.
+
+Initial findings: default `python` resolves to Anaconda without FastAPI;
+`py -3.12` has FastAPI installed. Default Ruff 0.15.1 reports BLE001 in
+`backend/app/services/upload_service.py:105`. Frontend ESLint passed.
+
+Ruling: continue verification in the existing checkout without a new worktree —
+no implementation changes are planned and installed frontend/Android dependencies
+are already available here — verification modifies generated build output and
+this checklist, but does not isolate those artifacts from other local activity.
+
+Ruling: use a separate temporary SQLite database and storage directory for live
+browser checks — preserve existing accounts/uploads and avoid remote services —
+this proves local behavior, not Render/S3 deployment behavior.
+
+Fresh results:
+
+- Prior audit virtualenv: backend `python -m pytest -q` — 85 passed, one upstream
+  Starlette/httpx deprecation warning; `python -m ruff check app tests migrations`
+  — passed with Ruff 0.17.5. Python 3.12's global environment instead failed eight
+  async cases because it lacks pytest-asyncio; no source changes were needed.
+- Frontend `npm run build:android` — static export and Capacitor sync passed;
+  a nonfatal webpack cache rename warning occurred.
+- Frontend `npm run build`, `npm run typecheck`, `npm run test:unit`, and
+  `npm run test:e2e` — passed (10 unit tests, 3 mocked-API Chromium tests).
+- `scripts/android-release.py --skip-frontend` with existing Java 21, Gradle
+  9.3.1, SDK, and release key — release lint/build, signing verification, and
+  byte-for-byte bundled asset checks passed. APK:
+  `artifacts/CloudVault-v1.1.0.apk`; SHA-256:
+  `67d5855588dfb64de2f1bb18b633421e1cce4f3865a39f7f08e48ddb6a47e3bf`.
+  Gradle initially reused the unit-test task; the subsequent
+  `:app:testDebugUnitTest --rerun-tasks` executed successfully. XML reports show
+  13 tests, zero failures/errors/skips.
+- Fresh migrated SQLite browser setup: migrations reached head, but registration
+  returned HTTP 500 with `sqlite3.OperationalError: unknown function: now()`.
+  `001_initial_schema.py` contains nine literal `server_default=sa.text('now()')`
+  declarations. Models use `func.now()` and tests create tables from model
+  metadata, explaining why the automated suite missed the migrated-schema bug.
+
+Ruling: leave the newly discovered migration defect unchanged in this verification
+pass — the prior scope excludes unrelated auth/schema implementation — a fresh
+migrated SQLite installation remains unusable until a separate repair.
+
+Ruling: continue the download browser check using a second temporary database
+created from the same model metadata as the backend test suite — isolate the
+download behavior from the demonstrated migration blocker without hiding it —
+successful downloads on that schema do not verify the documented Alembic setup.
+
+Final local browser evidence:
+
+- On the model-derived database, registration/login and drag-and-drop upload
+  succeeded through the production-built Next.js server and real FastAPI API.
+- The original fixture, preview blob, preview-dialog download, and file-action
+  direct download were all 598 bytes with matching SHA-256:
+  `88008ee7e78181ff13ba6e8c203885d118ef905d1ebfa1ce176596771ff53030`.
+  Both saved downloads were compared byte-for-byte with the original fixture.
+- Direct download returned HTTP 200 and matching `X-File-Size` and
+  `X-Content-SHA256` headers, including correct decoding of a gzip response.
+- Actual inline PDF page rendering remains unresolved: the iframe used the
+  verified PDF blob but its child frame was `chrome-error://chromewebdata/`.
+  A screenshot could not be captured because the desktop window was not visible.
+  This is not evidence that the document page rendered. The cause of the iframe
+  rendering failure has not been diagnosed; no sandbox/security settings changed.
+- Final APK checksum matches `artifacts/android-release.json` and the checksum
+  sidecar. Only this checklist remains changed in Git; Capacitor's incidental
+  XML whitespace change was removed. `git diff --check` passed.
+
+Local test instance remains at `http://127.0.0.1:3101` with API on port 8100.
+It uses only the temporary model-derived verification database/storage under
+`C:\Users\Durvesh Kale\AppData\Local\Temp\opencode\cloudvault-resume-rjx55muz`.
+Fixture and final verification JSON are retained there. No production source,
+real user data, signing secrets, remote configuration, commits, or pushes changed.
+
+Remaining: repair/test migration-based SQLite installation; diagnose inline PDF
+rendering; verify deployment/object storage, Docker runtime, and Android execution
+separately. Existing upstream deprecation warnings remain deferred.
