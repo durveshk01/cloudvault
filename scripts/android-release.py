@@ -125,6 +125,9 @@ def main():
         raise RuntimeError("Refusing to distribute a debuggable release.")
     if "CN=Android Debug" in verified:
         raise RuntimeError("Refusing to distribute an Android debug-key release.")
+    resources = run([aapt, "dump", "resources", source], env=env, capture=True).stdout
+    if not re.search(r":xml/config(?:\s|:)", resources):
+        raise RuntimeError("The release APK is missing its dynamically loaded Cordova xml/config resource.")
     with zipfile.ZipFile(source) as apk:
         packaged = json.loads(apk.read("assets/capacitor.config.json"))
         if packaged.get("plugins", {}).get("Vault", {}).get("apiUrl"):

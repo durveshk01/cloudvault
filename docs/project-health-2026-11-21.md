@@ -54,6 +54,10 @@ builds, and the live Render application.
   `cloudvault-files` bucket, then saved the generated S3 credentials only in
   Render's backend environment. Set the application's upload limit to 50 MB.
   Existing Render authentication and database configuration were preserved.
+- Release follow-up: the Android resource shrinker removed `xml/config`, which
+  Cordova resolves dynamically by name. Retained that resource with a shrinker
+  keep rule and added a release-package check. The check rejected the previous
+  APK and passed after rebuilding with the retained configuration.
 
 ## Fresh verification
 
@@ -139,3 +143,9 @@ builds, and the live Render application.
 For repeat verification, run `node scripts/check-deployment.mjs` from the
 repository root. The checker is read-only and
 returns a nonzero exit code for failed probes.
+
+The v1.1.0 publication build uses the existing private release certificate.
+The earlier published v1.0.2 used an Android debug certificate and cannot be
+updated in place with this private key. Back up/export needed data before
+uninstalling v1.0.2 and installing the new release; app-local data is removed
+on uninstall. The local vault does not automatically import cloud files.
