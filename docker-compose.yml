@@ -20,7 +20,9 @@ services:
 
   # MinIO (Optional S3-compatible local object storage)
   minio:
-    image: minio/minio:latest
+    build:
+      context: ./docker/minio
+    image: cloudvault-minio:community
     container_name: cloudvault-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"

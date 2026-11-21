@@ -54,7 +54,12 @@ async function mockApi(page: Page, { corrupt = false, proxyJson = false, empty =
   });
 }
 
-test("upload, preview, and Unicode-named PDF download preserve original bytes", async ({ page }) => {
+for (const legacyBlob of [false, true]) {
+test(`upload, preview, and Unicode-named PDF download preserve original bytes (${legacyBlob ? "legacy Blob" : "current Blob"})`, async ({ page }) => {
+  if (legacyBlob) await page.addInitScript(() => {
+    Object.defineProperty(Blob.prototype, "text", { value: undefined, configurable: true });
+    Object.defineProperty(Blob.prototype, "arrayBuffer", { value: undefined, configurable: true });
+  });
   await mockApi(page, { empty: true });
   await page.goto("/files");
   await page.getByRole("button", { name: "Upload File", exact: true }).click();
@@ -65,6 +70,10 @@ test("upload, preview, and Unicode-named PDF download preserve original bytes", 
   const frame = page.locator(`iframe[title="${file.original_filename}"]`);
   await expect(frame).toBeVisible();
   await expect(frame).toHaveAttribute("src", /^blob:/);
+  const previewUrl = await frame.getAttribute("src");
+  // A sandboxed PDF frame fails with chrome-error://chromewebdata/ even
+  // though fetching its blob returns the correct bytes.
+  await expect.poll(() => page.frames().map((child) => child.url())).toContain(previewUrl);
   const preview = await page.evaluate(async (title) => {
     const iframe = document.querySelector<HTMLIFrameElement>(`iframe[title="${title}"]`)!;
     return Array.from(new Uint8Array(await (await fetch(iframe.src)).arrayBuffer()));
@@ -77,6 +86,7 @@ test("upload, preview, and Unicode-named PDF download preserve original bytes", 
   await expect(download.failure()).resolves.toBeNull();
   expect(await readFile((await download.path())!)).toEqual(bytes);
 });
+}
 
 test("corrupt PDF shows an actionable error without starting a download", async ({ page }) => {
   await mockApi(page, { corrupt: true });

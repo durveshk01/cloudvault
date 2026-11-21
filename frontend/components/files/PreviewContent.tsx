@@ -13,7 +13,9 @@ export function PreviewContent({ preview, filename }: { preview: Preview; filena
     return <Image src={preview.url} unoptimized width={1000} height={800} alt={filename} className="max-h-full max-w-full w-auto h-auto object-contain rounded-lg" />;
   }
   if (preview.url && preview.mime === "application/pdf" && !isNative()) {
-    return <iframe src={preview.url} sandbox="allow-same-origin" title={filename} className="w-full h-full min-h-80 rounded-lg border border-border bg-white" />;
+    // This URL owns verified PDF bytes. Chromium's built-in PDF viewer cannot
+    // run inside an HTML sandbox; it provides its own isolated PDF renderer.
+    return <iframe src={preview.url} title={filename} className="w-full h-full min-h-80 rounded-lg border border-border bg-white" />;
   }
   if (preview.url && preview.mime.startsWith("audio/")) return <audio controls src={preview.url} className="max-w-full" />;
   if (preview.url && preview.mime.startsWith("video/")) return <video controls src={preview.url} className="max-h-full max-w-full" />;

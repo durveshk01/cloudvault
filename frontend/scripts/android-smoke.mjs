@@ -167,7 +167,7 @@ const first = "CloudVault offline UI smoke fixture. Encrypted import and verifie
 const second = "CloudVault immutable second revision.\n";
 const email = "smoke@example.com";
 const password = "VaultSmoke42!";
-const filename = "offline-proof.txt";
+const filename = `offline-proof-${Date.now()}.txt`;
 let fileId;
 let folderId;
 let failure;
@@ -218,8 +218,17 @@ try {
   await step("Android Save to device and byte-exact export", async () => {
     await click('button[aria-label="Download file"]');
     tap(await nativeFind(node => node.text.toLowerCase() === "save" && node.enabled === "true"));
-    await delay(1000);
-    assert.equal(command("exec-out", "cat", `/sdcard/Download/${filename}`), first);
+    // Creating the destination precedes the asynchronous encrypted-file export.
+    // Verify the bytes of this run's unique destination rather than a fixed delay.
+    const deadline = Date.now() + 30000;
+    let exported;
+    while (Date.now() < deadline) {
+      try { exported = command("exec-out", "cat", `/sdcard/Download/${filename}`); }
+      catch { /* DocumentsUI may not have created the destination yet. */ }
+      if (exported === first) break;
+      await delay(300);
+    }
+    assert.equal(exported, first, "The completed export must match the original bytes");
     await click('button[aria-label="Close file preview"]');
   });
   await step("Native new-version import and immutable version history", async () => {
@@ -241,14 +250,15 @@ try {
   });
   await step("Android share chooser", async () => {
     await fileAction(filename, "Share"); await click("button", "Share with Android");
-    await nativeFind(node => node.text === "Share a copy"); shell("input", "keyevent", "KEYCODE_BACK");
+    await nativeFind(node => node.package === "android" && node["resource-id"] === "android:id/content_preview_filename" && node.text === filename);
+    shell("input", "keyevent", "KEYCODE_BACK");
     await click('button[aria-label="Close sharing dialog"]');
   });
   await step("Camera permission, emulated capture and encrypted photo import", async () => {
     await click("main button", "Upload File"); await click("button", "Take photo");
     for (let attempt = 0; attempt < 12; attempt++) {
       const nodes = nativeNodes();
-      const allow = nodes.find(node => /permission_allow_button/.test(node["resource-id"] || ""));
+      const allow = nodes.find(node => /permission_allow_foreground_only_button|permission_allow_button/.test(node["resource-id"] || ""));
       if (allow) { tap(allow); await delay(600); continue; }
       const dismiss = nodes.find(node => /^(Got it|No thanks)$/i.test(node.text));
       if (dismiss) { tap(dismiss); await delay(600); continue; }

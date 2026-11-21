@@ -20,6 +20,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { readBlobText } from "@/lib/file-transfer";
 import { PublicShareInfo } from "@/types";
 import { formatBytes } from "@/lib/utils";
 import { PreviewContent } from "@/components/files/PreviewContent";
@@ -84,7 +85,7 @@ export default function PublicSharePage() {
     setPreview({ url: null, mime: "", text: null, loading: true, error: null });
     void api.getPublicPreviewBlob(token, password, controller.signal).then(async (blob) => {
       const mime = blob.type.split(";")[0];
-      const text = mime.startsWith("text/") || mime.includes("json") ? await blob.slice(0, 1024 * 1024).text() : null;
+      const text = mime.startsWith("text/") || mime.includes("json") ? await readBlobText(blob.slice(0, 1024 * 1024)) : null;
       if (!current) return;
       url = URL.createObjectURL(blob);
       setPreview({ url, mime, text, loading: false, error: null });

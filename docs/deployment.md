@@ -8,6 +8,11 @@ The fastest way to spin up the entire production-grade stack (PostgreSQL, MinIO,
 - Docker Engine 24+
 - Docker Compose v2+
 
+Compose builds MinIO Community from its pinned official source commit because
+the upstream community container image is no longer distributed. The first
+build downloads the Go toolchain and modules; later builds reuse Docker's cache.
+Existing MinIO volumes remain compatible and retain their historical UID.
+
 ### 1.2 Start Services
 
 ```bash
@@ -27,6 +32,22 @@ docker compose up -d --build
 - **Backend API**: Navigate to `http://localhost:8000/health`
 - **Swagger Docs**: Navigate to `http://localhost:8000/docs`
 - **MinIO Console**: Navigate to `http://localhost:9001` (user: `cloudvault_minio`, pass: `minio_secure_pass_123`)
+
+From the repository root, run the read-only deployment checks with Node 22+:
+
+```bash
+node scripts/check-deployment.mjs --frontend http://localhost:3000 --backend http://localhost:8000
+```
+
+Without arguments, the checker uses the documented Render URLs. It checks the
+frontend login page, direct backend health/database readiness, both frontend
+health proxies, and the unauthenticated API response. It exits with an error if
+any probe fails. These checks do not verify bucket permissions or a complete
+authenticated upload/download; test those separately with an isolated account.
+
+Render's blueprint now pins Node 22 and uses `/health/ready` for backend health.
+Publish the source and redeploy to apply these configuration changes to an
+existing service. The bundled Inter font removes the build's Google Fonts fetch.
 
 ### 1.4 Client identity and proxy timeouts
 
@@ -105,7 +126,7 @@ When preparing CloudVault for a public internet deployment:
    ```bash
    python -c "import secrets; print(secrets.token_hex(32))"
    ```
-3. **Storage Engine**: Switch `STORAGE_BACKEND=s3` and configure AWS S3 or Cloudflare R2 bucket credentials.
+3. **Storage Engine**: Switch `STORAGE_BACKEND=s3` and configure a private AWS S3, Cloudflare R2, or Supabase Storage bucket.
 4. **HTTPS / TLS**: Terminate TLS at a reverse proxy (e.g., Caddy, Nginx, or AWS ALB) and ensure `secure=True` on HttpOnly cookies.
 5. **CORS Origins**: Set `CORS_ORIGINS` to the exact public domain (e.g. `https://vault.example.com`).
 
@@ -148,8 +169,29 @@ network configuration has not been provisioned or verified locally.
 
 Existing Render services do not automatically change merely because the local
 blueprint was edited. Apply these settings in Render and redeploy both services.
-Durable storage requires your bucket and credentials; no infrastructure has
-been provisioned by this repair.
+Durable storage requires a private bucket and server credentials.
+
+### Current free Supabase storage
+
+The approved `cloudvault-storage` project in `durveshk01's Org` uses the Free
+plan. Its private `cloudvault-files` bucket is connected only to the Render
+backend; CloudVault authentication and its existing database stay on Render.
+
+```dotenv
+S3_BUCKET=cloudvault-files
+S3_ENDPOINT_URL=https://cbwnwlbnldbbambwomwu.storage.supabase.co/storage/v1/s3
+S3_REGION=us-west-1
+S3_CREATE_BUCKET=false
+MAX_FILE_SIZE_MB=50
+```
+
+The generated S3 access key and secret live in Render environment variables.
+Supabase S3 keys bypass bucket RLS, so keep them server-side and use this
+dedicated project only for CloudVault storage. The bucket remains private;
+downloads and public shares pass through CloudVault's authorization checks.
+The Free plan limits individual files to 50 MB and has finite storage/transfer
+quotas. No paid plan was enabled. Check the Supabase usage dashboard before
+increasing application quotas; inactive free projects may pause.
 
 **Before switching storage**, back up any surviving local objects and copy them
 to the new bucket under their unchanged `storage_key` paths. Otherwise existing

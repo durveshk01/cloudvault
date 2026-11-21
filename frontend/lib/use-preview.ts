@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { readBlobText } from "@/lib/file-transfer";
 import type { FileItem } from "@/types";
 
 export interface Preview {
@@ -30,7 +31,7 @@ export function usePreview(file: FileItem | null, enabled: boolean): Preview {
     void api.getPreviewBlob(id, controller.signal).then(async (blob) => {
       const mime = blob.type.split(";")[0];
       const text = mime.startsWith("text/") || mime.includes("json") || mime.includes("javascript")
-        ? await blob.slice(0, 1024 * 1024).text() + (blob.size > 1024 * 1024 ? "\n\n[Preview truncated — download the full file.]" : "") : null;
+        ? await readBlobText(blob.slice(0, 1024 * 1024)) + (blob.size > 1024 * 1024 ? "\n\n[Preview truncated — download the full file.]" : "") : null;
       if (!current) return;
       url = URL.createObjectURL(blob);
       setPreview({ url, mime, text, loading: false, error: null });

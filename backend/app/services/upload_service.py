@@ -103,5 +103,5 @@ class UploadService:
         try:
             await storage.delete_file(staged_key)
         except Exception:
-            logger.warning("Staged direct upload awaits object storage lifecycle cleanup", exc_info=True)
+            logger.exception("Staged direct upload awaits object storage lifecycle cleanup")
         return result

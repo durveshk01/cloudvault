@@ -179,7 +179,7 @@ async def download_public_shared_file(
     try:
         ShareService.increment_download_count(db, link.id)
     except BaseException:
-        await response.background()
+        response.spool.close()
         raise
     return response
 

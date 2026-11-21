@@ -166,6 +166,32 @@ def test_production_configuration_rejects_insecure_defaults():
         Settings(_env_file=None, ENVIRONMENT="production")
 
 
+def test_tag_assignment_is_idempotent_and_deduplicates_ids(client, auth_headers):
+    file = upload(client, auth_headers)
+    tag = client.post("/api/tags", headers=auth_headers, json={"name": "Important"}).json()
+    endpoint = f"/api/files/{file['id']}/tags"
+    for ids in ([tag["id"]], [tag["id"]], [tag["id"], tag["id"]]):
+        response = client.post(endpoint, headers=auth_headers, json={"tag_ids": ids})
+        assert response.status_code == 200, response.text
+        assert response.json() == [tag]
+
+
+def test_invalid_tag_assignment_preserves_previous_tags(client, auth_headers, second_user_headers):
+    file = upload(client, auth_headers)
+    own = client.post("/api/tags", headers=auth_headers, json={"name": "Keep"}).json()
+    other = client.post("/api/tags", headers=second_user_headers, json={"name": "Private"}).json()
+    endpoint = f"/api/files/{file['id']}/tags"
+    assert client.post(endpoint, headers=auth_headers, json={"tag_ids": [own["id"]]}).status_code == 200
+    for invalid in (other["id"], str(uuid.uuid4())):
+        response = client.post(endpoint, headers=auth_headers, json={"tag_ids": [invalid]})
+        assert response.status_code == 404, response.text
+        assert client.get(f"/api/files/{file['id']}", headers=auth_headers).json()["tags"] == [own]
+
+
+def test_whitespace_tag_name_is_rejected(client, auth_headers):
+    assert client.post("/api/tags", headers=auth_headers, json={"name": "   "}).status_code == 422
+
+
 def test_download_filename_header_is_unicode_safe(client, auth_headers):
     file = upload(client, auth_headers, 'résumé\r\n-injection.txt')
     response = client.get(f"/api/files/{file['id']}/download", headers=auth_headers)

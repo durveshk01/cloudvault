@@ -42,19 +42,19 @@ class TagService:
         if not file:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
 
-        # Clear existing file tags
-        existing_file_tags = db.scalars(select(FileTag).where(FileTag.file_id == file_id)).all()
-        for ft in existing_file_tags:
-            db.delete(ft)
-
-        # Add new tags
-        tags = []
+        # Validate the complete selection before changing existing associations.
+        tags_by_id = {tag.id: tag for tag in db.scalars(select(Tag).where(
+            Tag.id.in_(req.tag_ids), Tag.user_id == user_id,
+        ))}
+        if len(tags_by_id) != len(req.tag_ids):
+            raise HTTPException(status_code=404, detail="One or more selected tags are unavailable.")
+        existing = {item.tag_id: item for item in db.scalars(select(FileTag).where(FileTag.file_id == file_id))}
+        for tid, item in existing.items():
+            if tid not in tags_by_id:
+                db.delete(item)
         for tid in req.tag_ids:
-            tag = db.scalar(select(Tag).where(Tag.id == tid, Tag.user_id == user_id))
-            if tag:
-                ft = FileTag(file_id=file_id, tag_id=tag.id)
-                db.add(ft)
-                tags.append(tag)
+            if tid not in existing:
+                db.add(FileTag(file_id=file_id, tag_id=tid))
 
         db.commit()
-        return tags
+        return [tags_by_id[tid] for tid in req.tag_ids]

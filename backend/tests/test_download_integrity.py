@@ -10,10 +10,12 @@ from types import SimpleNamespace
 import pytest
 from botocore.response import StreamingBody
 from botocore.stub import Stubber
+from fastapi import HTTPException
 from sqlalchemy import select
 from starlette.requests import ClientDisconnect
 
 from app.api import files as files_api
+from app.api import shares as shares_api
 from app.core.config import settings
 from app.models.file import File
 from app.models.user import User
@@ -158,6 +160,34 @@ def test_public_corruption_does_not_consume_download_limit(client, auth_headers)
     response = client.post(f"{endpoint}/download")
     assert response.status_code == 200 and response.content == PDF
     assert client.post(f"{endpoint}/download").status_code == 410
+
+
+@pytest.mark.asyncio
+async def test_public_limit_reached_during_verification_returns_410_and_closes_spool(client, auth_headers, db_session, monkeypatch):
+    file = upload(client, auth_headers)
+    link = client.post(f"/api/files/{file['id']}/share-links", headers=auth_headers,
+                       json={"permission": "download", "max_downloads": 1}).json()
+    original = shares_api.stored_response
+    retained = []
+
+    async def racing_response(storage, record, **kwargs):
+        response = await original(storage, record, **kwargs)
+        retained.append(response.spool)
+        # Another download claims the final slot while these bytes are verified.
+        shares_api.ShareService.increment_download_count(db_session, uuid.UUID(link["id"]))
+        return response
+
+    monkeypatch.setattr(shares_api, "stored_response", racing_response)
+    try:
+        with pytest.raises(HTTPException) as captured:
+            # Call the real endpoint directly so a leaked spool is still retained
+            # and error type cannot be hidden by the global exception handler.
+            await shares_api.download_public_shared_file(link["token"], db_session, password=None, req=None)
+        assert captured.value.status_code == 410
+        assert retained[0].closed, "A response rejected before delivery must close its verified spool"
+    finally:
+        for spool in retained:
+            spool.close()
 
 
 @pytest.mark.asyncio

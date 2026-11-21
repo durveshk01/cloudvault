@@ -6,6 +6,31 @@ export interface FileIntegrity {
   mime?: string | null;
 }
 
+function readLegacyBlob(blob: Blob, method: "readAsText" | "readAsArrayBuffer"): Promise<string | ArrayBuffer | null> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error("The file could not be read."));
+    reader.onabort = () => reject(new DOMException("The file read was cancelled.", "AbortError"));
+    reader[method](blob);
+  });
+}
+
+export async function readBlobText(blob: Blob): Promise<string> {
+  if (typeof blob.text === "function") return blob.text();
+  // Android WebView 74 supports FileReader but predates Blob.text().
+  const result = await readLegacyBlob(blob, "readAsText");
+  if (typeof result !== "string") throw new Error("The file could not be read as text.");
+  return result;
+}
+
+export async function readBlobArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
+  if (typeof blob.arrayBuffer === "function") return blob.arrayBuffer();
+  const result = await readLegacyBlob(blob, "readAsArrayBuffer");
+  if (!(result instanceof ArrayBuffer)) throw new Error("The file could not be read for verification.");
+  return result;
+}
+
 export async function validateFileBlob(blob: Blob, expected: FileIntegrity = {}): Promise<Blob> {
   if (!blob.size || (expected.size !== undefined && blob.size !== expected.size)) {
     throw new Error("The file is incomplete or corrupted. Please upload the original again, or ask its owner to do so.");
@@ -13,14 +38,14 @@ export async function validateFileBlob(blob: Blob, expected: FileIntegrity = {})
   if (expected.checksum) {
     if (!/^[a-f0-9]{64}$/i.test(expected.checksum)) throw new Error("The file integrity information is invalid. Please try again.");
     if (!globalThis.crypto?.subtle) throw new Error("A secure HTTPS connection is required to verify this download.");
-    const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+    const digest = await crypto.subtle.digest("SHA-256", await readBlobArrayBuffer(blob));
     const checksum = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
     if (checksum !== expected.checksum.toLowerCase()) {
       throw new Error("File integrity verification failed. No file was saved. Please upload the original again, or ask its owner to do so.");
     }
   }
   if (expected.mime === "application/pdf" || blob.type.split(";")[0] === "application/pdf" || expected.filename?.toLowerCase().endsWith(".pdf")) {
-    if (!(await blob.slice(0, 1024).text()).includes("%PDF-")) {
+    if (!(await readBlobText(blob.slice(0, 1024))).includes("%PDF-")) {
       throw new Error("This document does not contain valid PDF data. Please upload the original PDF again.");
     }
   }

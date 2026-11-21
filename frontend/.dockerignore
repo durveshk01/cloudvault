@@ -1,0 +1,13 @@
+node_modules
+.next
+.next-android
+out
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.log
+.git

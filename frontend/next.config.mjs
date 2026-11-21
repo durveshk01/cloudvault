@@ -36,6 +36,10 @@ const nextConfig = {
               source: "/health",
               destination: `${backendUrl}/health`,
             },
+            {
+              source: "/health/ready",
+              destination: `${backendUrl}/health/ready`,
+            },
           ];
         },
       }),

@@ -1,12 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { ToastProvider } from "@/lib/toast-context";
 import { RuntimeProvider } from "@/lib/runtime-context";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = localFont({
+  src: "./fonts/Inter-latin-variable.woff2",
+  weight: "100 900",
+  style: "normal",
+  display: "swap",
+});
 
 export const viewport: Viewport = {
   themeColor: "#4f46e5",
