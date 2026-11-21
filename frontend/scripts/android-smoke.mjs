@@ -21,7 +21,7 @@ mkdirSync(reportDir, { recursive: true });
 const results = [];
 const errors = [];
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-const command = (...args) => execFileSync(adb, ["-s", values.serial, ...args], { encoding: "utf8", timeout: 60000 });
+const command = (...args) => execFileSync(adb, ["-s", values.serial, ...args], { encoding: "utf8", timeout: 60000, maxBuffer: 16 * 1024 * 1024 });
 const shell = (...args) => command("shell", ...args);
 let socket;
 let port;
@@ -135,7 +135,7 @@ async function nativeFind(predicate, timeout = 30000) {
   throw new Error("Native Android control was not found; inspect native-ui.xml.");
 }
 async function pick(filename) {
-  await nativeFind(node => node.package === "com.android.documentsui");
+  await nativeFind(node => /^(com\.android|com\.google\.android)\.documentsui$/.test(node.package));
   let nodes = nativeNodes();
   let file = nodes.find(node => node.text === filename);
   if (!file) {
@@ -250,7 +250,7 @@ try {
   });
   await step("Android share chooser", async () => {
     await fileAction(filename, "Share"); await click("button", "Share with Android");
-    await nativeFind(node => node.package === "android" && node["resource-id"] === "android:id/content_preview_filename" && node.text === filename);
+    await nativeFind(node => ["android", "com.android.intentresolver"].includes(node.package) && /:id\/content_preview_filename$/.test(node["resource-id"] || "") && node.text === filename);
     shell("input", "keyevent", "KEYCODE_BACK");
     await click('button[aria-label="Close sharing dialog"]');
   });

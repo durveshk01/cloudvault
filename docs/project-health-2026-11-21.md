@@ -46,7 +46,9 @@ builds, and the live Render application.
   MinIO data volumes remain writable.
 - Made Android export checks wait for completed bytes and recognize the native
   share chooser by its actual filename. Camera permission checks recognize
-  Android's foreground-only permission control.
+  Android's foreground-only permission control. The UI checker handles both
+  AOSP/Google document pickers and API 29/API 35 share chooser packages, and
+  allows sufficient logcat output to retain diagnostics.
 - Fixed live upload HTTP 500: Render logs showed missing S3 credentials. Created
   the approved free `cloudvault-storage` Supabase project and private
   `cloudvault-files` bucket, then saved the generated S3 credentials only in
@@ -85,33 +87,54 @@ builds, and the live Render application.
   signed release build/verification passed. Bundled assets match the frontend
   export exactly. APK SHA-256:
   `f75f785fd7ba16c5ab392f8ee3508c7895c3155f46fcad76ad10f91b2747e92f`.
+- Native UI: **13/13 checks passed on API 35**, with zero JavaScript exceptions:
+  offline startup, registration/login, folders, document import, text preview,
+  byte-exact export, immutable versions, rollback, native sharing, camera/photo
+  import, trash recovery, process-death persistence, and offline account unlock.
 - Live Render: authenticated private upload, preview/download, password-protected
   public download, and download-limit enforcement passed through the frontend
   proxy using Supabase S3. The 602-byte PDF matched SHA-256
   `5a9c131fadb710c03710f3ed0e08ee767698856a7c68e0f9e14ca033d978f183`.
   Supabase confirms the bucket is private; its security advisor found no issues.
+- Live S3 multipart transfer: a **9,437,184-byte** binary uploaded and downloaded
+  unchanged with SHA-256
+  `3b42e2fe559e11b3765d607de108396c65065b6e59645ef388289ad7c1b3f766`.
+  A one-minute client test timeout was insufficient for this transfer; the
+  bounded five-minute retry passed without an application change. The test
+  object was permanently removed afterward.
 - Independent code review found no actionable regressions. No credentials,
   databases, signing keys, generated bundles, or APKs are included in the source
   changes.
 
 ## Publication checks and remaining limits
 
-- Publication is followed by checking GitHub CI on Python 3.12/Node 22 and both
-  Render services at the pushed commit, rerunning all six deployment probes,
-  and downloading the same live test object across redeployment. Results are
-  recorded in the follow-up below.
+- Source fixes were pushed to `main` as
+  [`5079ac5`](https://github.com/durveshk01/cloudvault/commit/5079ac5f63026fd54c806daccf2dda70c4b15a89).
+  [Python 3.12 / Node 22 CI](https://github.com/durveshk01/cloudvault/actions/runs/44903114692)
+  and the [Android APK workflow](https://github.com/durveshk01/cloudvault/actions/runs/44903114705)
+  both passed at that commit.
+- [Render backend deployment](https://dashboard.render.com/web/srv-dbh2k7d9el5s73ajir1g/deploys/dep-dc0onf15efls73ebk25g)
+  and [frontend deployment](https://dashboard.render.com/web/srv-dbh2mgd9el5s73ajqn70/deploys/dep-dc0onf15efls73ebk2gg)
+  succeeded at `5079ac5`. All **6/6 live deployment probes passed**, including
+  `/health/ready` through the frontend. The existing live PDF remained
+  byte-identical across redeployment, and public sharing/limits passed again.
 - API 29 native UI checks passed registration/login, document import, text
   preview, byte-exact export, immutable versions, rollback, and Android sharing.
   The API 29 system camera crashes inside
-  `Camera2OneCameraManagerImpl.findCameraId` before capture. A fresh API 35
-  emulator is being used to verify camera and remaining lifecycle flows.
+  `Camera2OneCameraManagerImpl.findCameraId` before capture. The same CloudVault
+  APK passed camera and all remaining lifecycle flows on a fresh API 35 emulator
+  with a virtual-scene back camera. The API 29 system-image camera issue remains
+  an emulator limitation, not an observed CloudVault exception.
 - The Free Supabase plan has a 50 MB file limit and finite storage/transfer
   quotas; no paid plan was enabled. Free Render services may sleep, and inactive
   free Supabase projects may pause. These are hosting limits, not build errors.
 - Upstream Starlette's test-client deprecation warning remains; all test
   assertions pass. Production deployment does not use the test client.
 - Existing data and signing keys were preserved. Test accounts and objects were
-  isolated from user content; cleanup targets only audit objects and processes.
+  isolated from user content. Audit files, versions, and links were removed;
+  Supabase confirmed zero remaining test objects. Empty audit accounts remain
+  because the application has no account-deletion endpoint. The isolated
+  `cloudvaultaudit` Docker stack was stopped without deleting data volumes.
 
 For repeat verification, run `node scripts/check-deployment.mjs` from the
 repository root. The checker is read-only and
